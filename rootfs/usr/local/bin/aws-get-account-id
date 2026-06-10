@@ -1,0 +1,59 @@
+#!/usr/bin/env bash
+
+# retrieves the ID for the current directory in the project's "deployments" folder
+
+# Function to kebab-case a string
+kebab_case() {
+  echo "$1" | tr '[:upper:]' '[:lower:]' | sed -E 's/[ _]+/-/g'
+}
+
+# Get the account name from the current directory
+get_account_name_from_path() {
+  # Extract the last directory from the full path
+  local current_dir
+  current_dir=$(pwd)
+  local account_name
+  account_name=$(basename "$(dirname "${current_dir}")")
+  echo "$account_name"
+}
+
+# Get account ID from AWS Organizations
+get_account_id() {
+  local kebab_name="$1"
+
+  # refresh default credentials, needed to lookup account id
+  aws-refresh-sso "default" >/dev/null
+
+  # Fetch all accounts and filter by the kebab-case name
+  aws organizations list-accounts --query "Accounts[?Status=='ACTIVE']" \
+    --output json | jq -r --arg kebab_name "$kebab_name" '
+    .[] | select(.Name | ascii_downcase | gsub("[ _]+"; "-") == $kebab_name) | .Id'
+}
+
+# Main logic
+main() {
+  local account_name
+  account_name=$(get_account_name_from_path)
+  
+  # echo "Account Name: $account_name"
+
+  # Convert account name to kebab-case
+  local kebab_account_name
+  kebab_account_name=$(kebab_case "$account_name")
+
+  # echo "Kebab-Case Account Name: $kebab_account_name"
+
+  # Get the account ID
+  local account_id
+  account_id=$(get_account_id "$kebab_account_name")
+
+  if [[ -z "$account_id" ]]; then
+    echo "Error: No account found for name '$kebab_account_name'."
+    exit 1
+  fi
+
+  echo -n $account_id
+}
+
+# Run the script
+main

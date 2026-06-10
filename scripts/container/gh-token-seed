@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+#
+# gh-token-seed — ensure a fresh-enough token is cached, minting via KMS only when needed.
+#
+# Run by the Claude SessionStart hook to pre-warm the cache (so the first git/gh call is fast) and
+# to surface mint failures. It serves a still-fresh cached token when one exists and mints via KMS
+# only when the cache is stale, so a session start needn't hit AWS. Exits non-zero only when a mint
+# was actually required and failed, so the hook warns then.
+#
+set -euo pipefail
+umask 077
+
+CACHE="${GH_TOKEN_CACHE:-${XDG_RUNTIME_DIR:-/tmp}/gh-token.$(id -u)}"
+SKEW="${GH_TOKEN_SKEW:-300}"   # treat as stale when < 5 min remaining
+now=$(date +%s)
+
+# Fresh cached token? Nothing to do — don't touch AWS/KMS at all.
+if line="$(cat "$CACHE" 2>/dev/null)" && [ -n "$line" ]; then
+  exp="${line%% *}"
+  if [ -n "$exp" ] && [ "$exp" -gt "$((now + SKEW))" ] 2>/dev/null; then exit 0; fi
+fi
+
+# Stale/absent — mint once and seed the cache.
+line="$(/usr/local/bin/gh-app-token 2>&1)" \
+  || { echo "gh-token-seed: mint failed: ${line}" >&2; exit 1; }
+
+case "$line" in
+  [0-9]*\ *) printf '%s' "$line" > "$CACHE" ;;
+  *) echo "gh-token-seed: unexpected minter output (expected '<epoch> <token>')" >&2; exit 1 ;;
+esac

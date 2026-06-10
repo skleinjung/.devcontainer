@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+LOG_DIR="/workspace/opus/.devcontainer/logs"
+mkdir -p "$LOG_DIR"
+exec > >(tee "$LOG_DIR/container.log") 2>&1
+
+echo "[post-attach] Started."
+
+for script in /usr/local/bin/post-attach.d/*.sh; do
+  [ -f "$script" ] || continue
+  echo "[post-attach] Running $(basename "$script")..." >&2
+  bash "$script"
+done
+
+echo "[post-attach] Complete."

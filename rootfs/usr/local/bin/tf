@@ -1,0 +1,122 @@
+#!/usr/bin/env bash
+
+# Wrapper script to include .tfvars from the current and parent directories
+
+# Unified function to find files of a given name from the current directory
+# up to (and including) a folder named "terraform"
+function find_files() {
+    local filename="$1"
+    local dir="$PWD"
+    local files=()
+
+    while [ "$dir" != "/" ]; do
+        if [ -f "$dir/$filename" ]; then
+            files+=("$dir/$filename")
+        fi
+
+        if [ "$(basename "$dir")" == "terraform" ]; then
+            break
+        fi
+        
+        dir="$(dirname "$dir")"
+    done
+
+    # Reverse the array to ensure parent directories are processed first
+    echo "${files[@]}" | tr ' ' '\n' | tac | tr '\n' ' '
+}
+
+# git_info=$(git-info.sh 2>&1) || { echo "${git_info}" >&2; exit 1; }
+echo "[git info] ${git_info}"
+
+echo "###############################################################"
+echo "Setting variables..."
+echo "###############################################################"
+
+# Collect tfvars and backend files
+TFBACKEND_FILES=$(find_files "config.tfbackend")
+ENV_FILES=$(find_files "terraform.tfvars.env")
+
+# Source all `terraform.tfvars` files to export the variables
+for file in $ENV_FILES; do
+    echo "Sourcing variables from $file"
+    # Source the file to load environment variables
+    set -a # Automatically export all variables
+    source "$file"
+    set +a
+done
+
+# Construct Terraform command with -backend-config arguments
+BACKEND_CONFIG_ARGS=""
+for file in $TFBACKEND_FILES; do
+    BACKEND_CONFIG_ARGS="$BACKEND_CONFIG_ARGS -backend-config=$file"
+done
+
+STACK_NAME="${PWD##*/}"
+ENVIRONMENT_DIR="${PWD%/*}"
+ENVIRONMENT_NAME="${ENVIRONMENT_DIR##*/}"
+
+ENVIRONMENT=""
+for p in $ENVIRONMENT_ALIAS_MAP; do
+  if [[ $p == "$ENVIRONMENT_NAME="* ]]; then
+    ENVIRONMENT="${p#*=}"
+    break
+  fi
+done
+ENVIRONMENT="${ENVIRONMENT:-$ENVIRONMENT_NAME}"
+
+echo "Using AWS_PROFILE: $AWS_PROFILE"
+echo "Using ENVIRONMENT: $ENVIRONMENT (canonical from '${ENVIRONMENT_NAME}')"
+echo "Using STACK_NAME: $STACK_NAME"
+
+# Validate we have what we need
+if [[ -z "${STACK_NAME}" ]]; then
+    echo "ERROR: STACK_NAME is not set"
+    exit 1
+fi
+
+# ENVIRONMENT must be exactly 12 digits or a value from a known list
+if ! [[ "$ENVIRONMENT" =~ ^([0-9]{12}|on-premise)$ ]]; then
+  echo "ERROR: ENVIRONMENT must be a 12-digit number or 'on-premise' (got '${ENVIRONMENT:-unset}')" >&2
+  exit 1
+fi
+
+echo ""
+echo "###############################################################"
+echo "Refreshing credentials..."
+echo "###############################################################"
+
+#echo "Regenerating profiles"
+#aws-generate-profiles
+
+echo "Refreshing credentials for profile: ${AWS_PROFILE}"
+aws-refresh-sso "${AWS_PROFILE}"
+
+echo ""
+echo "###############################################################"
+echo "Running Terraform..."
+echo "###############################################################"
+
+# Validate input: at least one argument is required
+if [ "$#" -lt 1 ]; then
+    echo "Usage: $0 <COMMAND> [ARGS...]"
+    exit 1
+fi
+
+# Save the first parameter as the Terraform subcommand,
+# then shift off the positional parameters so "$@" holds the rest.
+CMD="$1"
+shift
+
+export TF_VAR_stack_name="${STACK_NAME}"
+statePath="env=${ENVIRONMENT}/stack=${STACK_NAME}"
+if [ "$CMD" = "init" ]; then
+  echo "Using config.tfbackend files: $BACKEND_CONFIG_ARGS"
+  echo "exec terraform $CMD -backend-config=\"key=${statePath}/terraform.tfstate\" $BACKEND_CONFIG_ARGS $@"
+  exec terraform "$CMD" \
+    -backend-config="key=${statePath}/terraform.tfstate" \
+    $BACKEND_CONFIG_ARGS \
+    "$@"
+else
+  echo "exec terraform $CMD $@"
+  exec terraform "$CMD" "$@"
+fi
