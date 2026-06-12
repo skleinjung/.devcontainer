@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# Neutralize VS Code's git credential channel inside the container, so agents are confined to the
-# scoped /creds shelf tokens and cannot reach the human's VS Code GitHub login (a broad personal
-# OAuth token). VS Code injects GIT_ASKPASS + a VSCODE_GIT_IPC_HANDLE socket into the shells it
-# spawns; any process inheriting them can ask VS Code for credentials. `git.useIntegratedAskPass:
-# false` (devcontainer.json) stops the askpass injection; this scrubs the residual env vars from
-# the shells agents are launched from. git/gh are unaffected — they authenticate via
-# git-credential-shelf, independent of askpass. See the README "VS Code GitHub auth" section.
+# Neutralize VS Code's host-reaching env channels in INTERACTIVE TERMINALS. devcontainer.json
+# `remoteEnv` already blanks these for the processes VS Code spawns (the agent's non-interactive
+# shells included) — but VS Code RE-INJECTS VSCODE_GIT_IPC_HANDLE / VSCODE_IPC_HOOK_CLI / BROWSER
+# into integrated terminals via its terminal EnvironmentVariableCollection, overriding remoteEnv
+# there (empirically confirmed). This shell scrub is what cleans interactive terminals, and so
+# also anything launched from them (e.g. an agent started by typing `claude`). git/gh are
+# unaffected — they authenticate via git-credential-shelf, independent of askpass. See SECURITY.md
+# "two-layer env neutralization".
+#
+# TODO(#4): installs via sudo, which #4 removes (no-new-privileges disables setuid sudo). Move
+# this to a build-time Dockerfile step before #4 lands.
 #
 # Residual: a process launched directly by the VS Code server (not via a terminal shell that
 # sources these files) could still inherit VSCODE_GIT_IPC_HANDLE and would have to speak the git

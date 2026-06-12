@@ -151,8 +151,12 @@ first place:
 - `remote.containers.gitCredentialHelperConfigLocation: none` — VS Code doesn't inject a
   host-credential-proxy helper (the separate path that would bridge your *host's* stored git creds
   in; see vscode-remote-release#4426 — neither setting alone is sufficient).
-- `post-create.d/05-scrub-vscode-git-auth.sh` — a secondary shell scrub (`/etc/profile.d` +
-  `/etc/bash.bashrc`) covering shells started *outside* VS Code (e.g. `docker exec`).
+- `post-create.d/05-scrub-vscode-git-auth.sh` — a shell scrub (`/etc/profile.d` +
+  `/etc/bash.bashrc`). **Not** merely secondary: VS Code re-injects `VSCODE_GIT_IPC_HANDLE` /
+  `VSCODE_IPC_HOOK_CLI` / `BROWSER` into *integrated terminals* on top of `remoteEnv`, so this is
+  the only thing that cleans them there (verified — see SECURITY.md "two-layer env
+  neutralization"). `remoteEnv` covers the agent's own non-interactive shells; the scrub covers
+  interactive terminals (and anything launched from them).
 
 The git extension stays **enabled** — its Source Control UI authenticates github.com via
 `git-credential-shelf` (the scoped shelf token), not your OAuth, so it works normally and signing

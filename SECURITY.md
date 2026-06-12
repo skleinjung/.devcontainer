@@ -88,6 +88,20 @@ Sync and Copilot do **not** create that session; only an explicit git sign-in / 
 GitHub" does. Empirically demonstrated: with the git session authorized, an agent silently pulled
 a live `repo`+`workflow` token from the socket; with it not authorized, the socket returns nothing.
 
+**Two-layer env neutralization (both required):** `remoteEnv` blanks these vars for the processes
+VS Code spawns — which covers the **agent path** (non-interactive `bash -c`), *verified*: an agent
+shell's exec-time `/proc/self/environ` has none of them. But VS Code **re-injects**
+`VSCODE_GIT_IPC_HANDLE` / `VSCODE_IPC_HOOK_CLI` / `BROWSER` into **integrated terminals** via its
+terminal `EnvironmentVariableCollection`, *overriding* `remoteEnv` there (`GIT_ASKPASS` is the
+exception — `useIntegratedAskPass:false` stops its re-injection). So `remoteEnv` is **not**
+sufficient alone for interactive terminals; the `post-create.d/05-scrub-vscode-git-auth.sh` shell
+scrub is what cleans them, and it matters because anything launched *from* a human's integrated
+terminal (including an agent started by typing `claude`) inherits that terminal's env. Both layers
+are load-bearing — `remoteEnv` for spawned/agent processes, the scrub for interactive terminals.
+*(Verify after any rebuild: in a fresh terminal, `tr '\0' '\n' < /proc/$$/environ | grep -E
+'^(VSCODE_GIT_IPC_HANDLE|VSCODE_IPC_HOOK_CLI|BROWSER)='` reads the exec-time env underneath the
+scrub — non-empty there means VS Code is still re-injecting and the scrub is doing real work.)*
+
 **Why `ptrace_scope` matters:** the Settings Sync / Copilot tokens live in the extension-host
 process heap. They are not on disk and not in env/args (verified). They're protected from a
 sibling agent only by yama `ptrace_scope ≥ 1` (blocks `/proc/<pid>/mem` of non-descendants).

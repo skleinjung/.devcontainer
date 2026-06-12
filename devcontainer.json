@@ -20,6 +20,7 @@
     // hardware touch on every startup; HTTPS rides the App-token auth above instead. (The startup
     // ssh connectivity probe is handled separately by the ~/.claude/bin/ssh shim.)
     "CLAUDE_CODE_PLUGIN_PREFER_HTTPS": "1"
+    
   },
   "customizations": {
     "vscode": {
