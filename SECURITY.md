@@ -39,6 +39,70 @@ uid entirely.
 The two boundaries that carry the security weight: **(3) admin ↔ (4) workspace**, and **(4)
 workspace ↔ everything above it** (host + desktop).
 
+## Required invariants (customization checklist)
+
+If you customize this container, **do not change any of the following without understanding the
+consequence noted** — each is load-bearing for the model below. Grouped by where it lives. (✅ =
+current; ⏳ #N = target state once that issue lands — don't regress *toward* the insecure side.)
+
+**`devcontainer.json` → `customizations.vscode.settings`**
+
+| Setting | Required value | Why |
+|---|---|---|
+| `git.useIntegratedAskPass` | `false` | Stops the git extension injecting `GIT_ASKPASS` (the OAuth-token askpass path) |
+| `remote.containers.gitCredentialHelperConfigLocation` | `"none"` | No host-credential-proxy helper bridging the host's stored git creds in |
+| `remote.containers.copyGitConfig` | `false` | Don't copy host `~/.gitconfig` + `.git-credentials` (plaintext token, `credential.helper`, `signingkey`) into the container |
+| `dev.containers.dockerCredentialHelper` | `false` | No VS Code-injected docker credential helper |
+
+**`devcontainer.json` → `remoteEnv`**
+
+- **MUST blank (`""`):** `GIT_ASKPASS`, `VSCODE_GIT_IPC_HANDLE`, `VSCODE_GIT_ASKPASS_MAIN`,
+  `VSCODE_GIT_ASKPASS_NODE`, `VSCODE_GIT_ASKPASS_EXTRA_ARGS`, `VSCODE_IPC_HOOK_CLI`, `BROWSER`,
+  `GPG_AGENT_INFO` — neutralize VS Code's host-reaching channels for spawned (agent) processes.
+  *(Interactive terminals also need the shell scrub — VS Code re-injects there; see the two-layer
+  note.)*
+- **MUST NOT blank:** `SSH_AUTH_SOCK` — kept for SSH-remote git; safe only via FIDO hardware touch
+  (see operational invariants).
+
+**`devcontainer.json` → `containerEnv`**
+
+| Var | Required | Why |
+|---|---|---|
+| `AWS_SHARED_CREDENTIALS_FILE` | `/creds/aws/credentials` | Agents read the vended shelf credentials |
+| `GH_DEFAULT_ORG` | a **vended** org | Default GitHub token when no repo context pins an org |
+| `AWS_PROFILE` | **must NOT be set to an SSO profile** | Would override the shelf `[default]` and bypass the vended role |
+
+**`docker-compose.yml` → workspace service**
+
+| Item | Required | Why |
+|---|---|---|
+| `creds-shelf` mount | **`:ro`** in workspace | Read-only shelf — agents can't tamper with or forge vended creds |
+| admin-sidecar home volume | **never** mounted into workspace | The powerful creds (SSO session, KMS signing) stay out of the untrusted uid |
+| Docker socket | **never** mounted (`/var/run/docker.sock`) | A writable socket is root-equivalent on the host — voids every boundary |
+| `privileged` | **never** `true` | Privileged ⇒ trivial host escape |
+| `cap_add: SYS_PTRACE` / `ptrace_scope` | **never add** SYS_PTRACE; keep `ptrace_scope ≥ 1` | Protects in-memory Settings-Sync/Copilot tokens from heap scraping (✅) |
+| `network_mode: host`, `ipc: host` | ⏳ #4: drop to bridge | Host net/ipc gives the agent the host's network/IPC namespace |
+| `cap_drop: [ALL]` + `no-new-privileges` + no sudo | ⏳ #4: add | Reduce in-container root power / credential-tooling tampering |
+
+**git / credential config**
+
+| Item | Required | Why |
+|---|---|---|
+| github.com `credential.helper` | `git-credential-shelf` only | Routes to the scoped shelf token; persists nothing |
+| `credential.helper store` | **never configure** | Would write a plaintext `~/.git-credentials` token sink readable by any same-uid process |
+
+**Operational (not config, but must hold)**
+
+- **Do not authorize the GitHub *git* OAuth session** in VS Code (don't "Publish to GitHub" / git
+  sign-in). Settings Sync + Copilot are fine — they don't create that session. *(The askpass
+  socket residual: with no session there's nothing to vend.)*
+- **Never add a non-touch SSH key** to the forwarded agent — its entire safety is the hardware
+  touch.
+- **Review `.devcontainer/` *and* `.vscode/settings.json` diffs before window *reload* and
+  rebuild** — they're bind-mounted, agent-writable, and some apply on reload.
+- **Keep the vend config (`admin-sidecar/github-installations.json`) baked into the image**, not
+  bind-mounted from `/workspace` — so changing vend scope requires a human rebuild.
+
 ## Boundary 1 — admin ↔ workspace (the credential architecture)
 
 **Motivation:** the powerful credentials (the human's full SSO session, which can mint *any* AWS
