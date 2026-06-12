@@ -10,7 +10,8 @@ USER root
 # uses neither (no sudo grant, no-new-privileges neuters setuid; we use bash, not zsh). NO
 # lastpass-cli — secret-fetching tooling belongs in the admin sidecar, not the agent container.
 # These layers are kept BEFORE the COPY layers below so editing a script doesn't bust their cache.
-RUN apt-get update \
+RUN export SUDO_FORCE_REMOVE=yes \
+  && apt-get update \
   && apt-get --no-install-recommends -yqq install gnupg2 \
   && apt-get -y purge sudo zsh \
   && apt-get -y autoremove \
