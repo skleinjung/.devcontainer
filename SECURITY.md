@@ -103,6 +103,58 @@ current; ⏳ #N = target state once that issue lands — don't regress *toward* 
 - **Keep the vend config (`admin-sidecar/github-installations.json`) baked into the image**, not
   bind-mounted from `/workspace` — so changing vend scope requires a human rebuild.
 
+## Required discipline (the human's responsibilities)
+
+The invariants above are static config. These are the ongoing human actions the model depends on —
+because the architecture confines **credentials**, it does **not** stop you from running code an
+agent wrote, or from approving a prompt an agent induced. Those gaps are closed by you.
+
+**Applying agent-authored changes**
+
+- **Review diffs before executing anything with elevated privilege in the admin sidecar.** The
+  sidecar mounts `/workspace` (agent-writable) and holds your real SSO session — `terraform apply`,
+  `ansible`, `pnpm deploy`, `lpass`, etc. run there as *you*, on whatever an agent wrote. The
+  boundary protects your credentials, not you from applying unreviewed code. Pattern: **agents
+  prepare, humans review-and-apply.**
+- **Verify before any hard-to-reverse / outward-facing action an agent set up** — merging a PR it
+  opened, pushing, deploying, destroying. The vended token *can* do these within its scope; that
+  it *should* is yours to confirm.
+
+**Before window reload / rebuild**
+
+- **Review `.devcontainer/`, `.vscode/settings.json`, and `devcontainer.json` diffs first.** They
+  are bind-mounted and agent-writable; settings apply on **reload**, container config on rebuild. A
+  poisoned `remote.extensionKind` here is the extension-host RCE path (see [#5]).
+
+**Prompt vigilance (an agent can induce these)**
+
+- **Never approve a YubiKey touch you didn't initiate.** An agent can trigger an SSH / commit-sign
+  operation that pops a touch prompt; a reflexive touch authorizes it.
+- **Don't authorize the VS Code GitHub *git* sign-in** ("Allow extension 'GitHub' to
+  authenticate" / "Publish to GitHub") — activity in the container can summon that consent, and
+  approving it arms the askpass-socket token leak. Settings Sync + Copilot are fine.
+
+**Credential scoping (when you change what's vended)**
+
+- **Scope deliberately, least-privilege.** Adding an installation to `github-installations.json`, a
+  role to `VEND_AWS_PROFILES`, or widening `VEND_GH_REPOS` / `VEND_GH_PERMS` chooses the agent's
+  blast radius. The system keeps tokens scoped and ≤1h; *which* scope is your call — prefer
+  per-repo / per-permission narrowing, and don't grant `admin` / `delete_repo` / org-wide unless a
+  task genuinely needs it. *(Deciding least privilege is otherwise [out of scope](#out-of-scope).)*
+- **Keep the SSO session no broader or longer-lived than needed** — it's the human gate; re-auth on
+  demand rather than holding a broad standing session.
+
+**Workspace hygiene**
+
+- **Treat everything in the workspace as potentially hostile** — packages, extensions, agent
+  output. Don't install untrusted VS Code extensions into it, and remember the desktop-bridged
+  container has an unfixed host-RCE path (see [#5]): opening a fully untrusted repo in it puts that
+  code on your workstation's trust boundary.
+- **No production secrets in the workspace** (`.env`, etc.) — dev-only; anything an agent can read
+  it can exfiltrate within its (accepted) blast radius.
+
+[#5]: https://github.com/skleinjung/.devcontainer/issues/5
+
 ## Boundary 1 — admin ↔ workspace (the credential architecture)
 
 **Motivation:** the powerful credentials (the human's full SSO session, which can mint *any* AWS
