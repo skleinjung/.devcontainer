@@ -6,5 +6,27 @@
       "aws",
       "opus"
     ]
+  },
+  {
+    "org": "skleinjung",
+    "installation_id": "139866498"
+  },
+  {
+    "org": "pegasuspad",
+    "installation_id": "139866905",
+    "repos": [
+      "infrastructure",
+      "music",
+      "monorepo",
+      "backup-controller"
+    ]
+  },
+  {
+    "org": "thrashplay",
+    "installation_id": "139867144"
+  },
+  {
+    "org": "shardworks",
+    "installation_id": "139867316"
   }
 ]
