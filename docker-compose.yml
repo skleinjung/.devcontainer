@@ -10,6 +10,11 @@ services:
         limits:
           cpus: '6'
           memory: 6g
+    # Entrypoint reaps VS Code's CLI/git IPC sockets (vscode-ipc-*.sock, vscode-git-*.sock) so
+    # untrusted code can't reach them, then runs `command`. Requires devcontainer.json
+    # overrideCommand:false so VS Code keeps OUR entrypoint instead of replacing it. See SECURITY.md.
+    entrypoint: ['/usr/local/bin/workspace-entrypoint']
+    command: ['sleep', 'infinity']
     # Bridge networking (NOT network_mode/ipc: host) so the agent doesn't share the host's network
     # and IPC namespaces. VS Code forwards container ports over the existing SSH tunnel
     # (devcontainer.json forwardPorts); the sidecar communicates via the /creds volume, not the
