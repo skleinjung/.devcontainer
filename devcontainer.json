@@ -25,6 +25,11 @@
     "vscode": {
       "settings": {
         "dev.containers.dockerCredentialHelper": false,
+        // Don't inject GIT_ASKPASS: it forwards credential prompts to VS Code, which can hand a
+        // process the human's VS Code GitHub login (a broad personal OAuth token) — far more than
+        // the scoped shelf tokens agents are meant to have. git/gh are unaffected (they use the
+        // git-credential-shelf helper). A profile.d scrub (post-create) covers the residual env.
+        "git.useIntegratedAskPass": false,
         "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
       }
     }

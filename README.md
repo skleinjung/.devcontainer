@@ -127,6 +127,29 @@ sequenceDiagram
   `/workspace`. Remember the source you apply there is agent-writable — review diffs before
   `terraform apply` etc.
 
+## VS Code GitHub auth (kept away from agents)
+
+VS Code has its own GitHub credential path, separate from the shelf, and it must not become a way
+for agents to get a broader token than the shelf grants. When you sign into GitHub in VS Code
+(Accounts menu — Settings Sync, the Pull Requests extension, Copilot all prompt for it), VS Code
+caches your **personal OAuth token** and exposes a credential channel to processes in the
+container: `GIT_ASKPASS` (→ VS Code's askpass) and a `VSCODE_GIT_IPC_HANDLE` socket, both
+inherited by terminal child processes. Anything inheriting them — including an agent — can ask VS
+Code for that token, which is *you* with broad scope, well beyond the per-org `ghs_`
+app-installation tokens on the shelf.
+
+This container neutralizes that path so agents stay confined to shelf tokens:
+
+- `git.useIntegratedAskPass: false` (devcontainer.json) — VS Code no longer injects `GIT_ASKPASS`.
+- `post-create.d/05-scrub-vscode-git-auth.sh` — unsets `GIT_ASKPASS` / `VSCODE_GIT_ASKPASS_*` /
+  `VSCODE_GIT_IPC_HANDLE` for shells (via `/etc/profile.d` + `/etc/bash.bashrc`).
+
+`git`/`gh` are unaffected — they authenticate via `git-credential-shelf`, independent of askpass.
+Residual: a process launched *directly* by the VS Code server (not via a scrubbed shell) could
+still see `VSCODE_GIT_IPC_HANDLE` and would have to speak the git IPC protocol to the socket
+directly — a much higher bar, with the easy askpass path removed. Belt-and-suspenders: prefer not
+to sign into GitHub in VS Code for this window (use a Microsoft account for Settings Sync).
+
 ## Troubleshooting
 
 | Symptom | Meaning | Fix |
