@@ -127,6 +127,51 @@ sequenceDiagram
   `/workspace`. Remember the source you apply there is agent-writable — review diffs before
   `terraform apply` etc.
 
+> For the full threat landscape — trust tiers, every VS Code secret↔process channel, what's left
+> enabled and why, what's structurally unfixable, and what's out of scope — see
+> [SECURITY.md](./SECURITY.md). The sections below are the GitHub-auth slice of it.
+
+## VS Code GitHub auth (kept away from agents)
+
+VS Code has its own host-reaching channels, separate from the shelf, and they must not become a
+way for agents to get more than the shelf grants. The credential one: if you sign into the GitHub
+**git** session in VS Code, it caches your **personal OAuth token** (`repo`+`workflow` scope — far
+broader than the per-org `ghs_` shelf tokens) and exposes it over `GIT_ASKPASS` → a
+`VSCODE_GIT_IPC_HANDLE` unix socket. That socket has no caller authentication, so any same-uid
+process — including an agent — can request the token from it. There are also non-credential
+host-action channels: `VSCODE_IPC_HOOK_CLI` (the `code` CLI / `--openExternal`), `BROWSER`,
+`GPG_AGENT_INFO`.
+
+This container blanks all of those via **`remoteEnv`** (devcontainer.json), which applies to every
+process VS Code spawns — terminals *and* the agent's non-interactive `bash -c` subprocesses, which
+a shell-only scrub misses. Plus two settings that stop VS Code wiring credential paths in the
+first place:
+
+- `git.useIntegratedAskPass: false` — VS Code doesn't inject the askpass.
+- `remote.containers.gitCredentialHelperConfigLocation: none` — VS Code doesn't inject a
+  host-credential-proxy helper (the separate path that would bridge your *host's* stored git creds
+  in; see vscode-remote-release#4426 — neither setting alone is sufficient).
+- `post-create.d/05-scrub-vscode-git-auth.sh` — a shell scrub (`/etc/profile.d` +
+  `/etc/bash.bashrc`). **Not** merely secondary: VS Code re-injects `VSCODE_GIT_IPC_HANDLE` /
+  `VSCODE_IPC_HOOK_CLI` / `BROWSER` into *integrated terminals* on top of `remoteEnv`, so this is
+  the only thing that cleans them there (verified — see SECURITY.md "two-layer env
+  neutralization"). `remoteEnv` covers the agent's own non-interactive shells; the scrub covers
+  interactive terminals (and anything launched from them).
+
+The git extension stays **enabled** — its Source Control UI authenticates github.com via
+`git-credential-shelf` (the scoped shelf token), not your OAuth, so it works normally and signing
+out of GitHub doesn't affect it. `SSH_AUTH_SOCK` is intentionally left in place (forwarded
+FIDO/YubiKey agent, hardware-touch-gated, used for SSH-remote git).
+
+**The residual, stated plainly:** the git extension being enabled means the askpass IPC socket
+still exists at `/tmp/vscode-git-*.sock` — discoverable by `ls` and connectable by any same-uid
+process, regardless of the blanked env var. So the real guarantee is upstream: **don't authorize
+the GitHub *git* session** in VS Code. With no session, the socket has nothing to vend (it
+prompts). Settings Sync and Copilot do **not** create that session, and their tokens are not
+agent-reachable (client-side storage + `ptrace_scope`); only an explicit *git* sign-in /
+"Publish to GitHub" does. (To remove the socket entirely you would disable the git extension with
+`git.enabled: false` — we keep it for the UI and accept this residual.)
+
 ## Troubleshooting
 
 | Symptom | Meaning | Fix |
@@ -177,6 +222,18 @@ flag/remote, `git` by request path), so adding coverage is a config change, not 
 These `.devcontainer` files live on the agent-writable `/workspace` mount. Changes only take
 effect when a **human rebuilds/recreates** the containers — so *review the diff of this
 directory before any rebuild*; it is part of the security model.
+
+Two sharper edges (see the VS Code extension-host RCE note in the threat model / issue):
+
+- **`.vscode/settings.json` and `.devcontainer/devcontainer.json` are also agent-writable, and
+  some settings apply on a window *reload*, not just a rebuild** — a much lower bar, and reload
+  can be triggered from inside. Review changes to those files before *reloading the window*, not
+  only before rebuilding. (`remote.extensionKind` and extension config are the dangerous ones.)
+- **SSH agent (`SSH_AUTH_SOCK`) is forwarded and reachable by agents.** Its safety rests entirely
+  on the keys being **FIDO/hardware (touch-required)** — an agent can enumerate keys (`ssh-add
+  -L`) and attempt to use them, but each use needs a physical touch. Invariant: **never add a
+  non-touch SSH key to the agent in this container**, and be wary of unexpected touch prompts
+  (an agent can trigger them and try to make one look routine).
 
 ## Rebuilding (keep workspace + sidecar in one compose project)
 
