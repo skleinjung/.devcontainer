@@ -177,3 +177,19 @@ flag/remote, `git` by request path), so adding coverage is a config change, not 
 These `.devcontainer` files live on the agent-writable `/workspace` mount. Changes only take
 effect when a **human rebuilds/recreates** the containers — so *review the diff of this
 directory before any rebuild*; it is part of the security model.
+
+## Rebuilding (keep workspace + sidecar in one compose project)
+
+Both services share the `creds-shelf` volume **only when they're in the same compose project** —
+Docker names volumes `<project>_creds-shelf`. VS Code launches the workspace under a project like
+`workspace_devcontainer`; a bare `docker compose up -d admin-sidecar` from the host defaults the
+project to the directory name (e.g. `devcontainer`), creating a *second*, orphaned sidecar on a
+*different* volume that the workspace can't read (the `container_name: admin-sidecar` override
+hides this — same name, different project). Symptom: the sidecar logs `vended` but the workspace
+sees stale/no tokens.
+
+So: **rebuild from VS Code** ("Dev Containers: Rebuild Container"), which recreates both services
+in one project. To (re)build just the sidecar from the host, pass the workspace's project name:
+`docker compose -p workspace_devcontainer up -d --build admin-sidecar`. After a rebuild the
+sidecar's home volume may be fresh, so re-run `aws-refresh-sso <profile>` once to restore the SSO
+session.
