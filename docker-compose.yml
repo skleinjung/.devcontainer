@@ -43,16 +43,22 @@ services:
   # ── credential sidecars (toolkit images) — vend short-lived scoped creds to the shelf ────
   # They share `admin-home`, so a single `aws sso login` serves both; that home (the SSO
   # session) is mounted into NO consumer. Enter from a HOST terminal to log in:
-  #   docker exec -it <project>-credentials-aws-1 aws sso login --profile <profile>
+  #   docker exec -it <project>-credentials-aws-1 aws sso login --profile 084828575849-developer-ai-agent
+
   credentials-aws:
-    image: ghcr.io/skleinjung/devcontainers/credential-shelf-aws:latest
+    # Derived image that bakes aws-creds/accounts.yaml (which account/role(s) to vend) — a
+    # reviewed rebuild, not a /workspace bind-mount. On start it renders the shared
+    # ~/.aws/config from accounts.yaml + the SSO env below.
+    build: ./aws-creds
     init: true
     restart: unless-stopped
     environment:
       # No reachable localhost callback in here (bridge net) — use the SSO device-code flow.
       AWS_SSO_USE_DEVICE_CODE: '1'
-      # Space-separated ~/.aws/config profiles to vend; the first also becomes [default].
-      VEND_AWS_PROFILES: 084828575849-developer-ai-agent
+      # Upstream IAM Identity Center session. The account/role(s) to vend live in
+      # aws-creds/accounts.yaml.
+      VEND_AWS_SSO_START_URL: https://d-9067c161a5.awsapps.com/start/
+      VEND_AWS_SSO_REGION: us-east-1
     volumes:
       - admin-home:/home/${USER}
       - creds-shelf:/creds

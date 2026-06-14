@@ -32,8 +32,10 @@ it can only read what's vended.
 2. **GitHub App key → KMS** (once, if not already done): in the github sidecar,
    `import-app-private-key <app-key.pem>` imports it as a non-extractable KMS key; set the
    alias as `VEND_GH_KMS_KEY_ID`, grant `kms:Sign` to `VEND_GH_AWS_PROFILE`, shred the `.pem`.
-3. **SSO login** — set up `~/.aws/config` (your SSO start URL + the agent/kms profiles) in the
-   shared `admin-home`, then log in (device-code flow; `AWS_SSO_USE_DEVICE_CODE=1` is set):
+3. **Set the SSO start URL** — `VEND_AWS_SSO_START_URL` on `credentials-aws` in
+   `docker-compose.yml`. The account/role(s) live in `aws-creds/accounts.yaml`; the sidecar
+   renders the shared `~/.aws/config` from them on start (no hand-authoring).
+4. **SSO login** — log in once (device-code flow; `AWS_SSO_USE_DEVICE_CODE=1` is set):
    ```sh
    docker exec -it <project>-credentials-aws-1 aws sso login --profile 084828575849-developer-ai-agent
    ```
@@ -67,8 +69,9 @@ it can only read what's vended.
 
 ## Changing what's vended
 
-- **AWS scope**: edit `VEND_AWS_PROFILES` on `credentials-aws` in
-  [docker-compose.yml](./docker-compose.yml), then recreate the sidecar.
+- **AWS scope**: edit [aws-creds/accounts.yaml](./aws-creds/accounts.yaml) (one entry per
+  role; `vend: false` keeps a role in `~/.aws/config` but off the shelf) and **rebuild** the
+  `credentials-aws` sidecar.
 - **GitHub orgs/repos**: edit [github-creds/installations.json](./github-creds/installations.json)
   (one entry per org: `{ "org", "installation_id", "repos"?, "perms"? }`) and **rebuild** the
   github sidecar — it's baked into the image (a reviewed rebuild, not a `/workspace` mount). For
