@@ -1,6 +1,8 @@
 services:
   workspace:
     build:
+      args:
+        USERNAME: '${USER}'
       context: .
       dockerfile: Dockerfile
     deploy:
@@ -8,7 +10,7 @@ services:
         limits:
           cpus: '6'
           memory: 6g
-    # base ships reap-vscode-sockets: it reaps VS Code's CLI/git IPC sockets, then runs
+    # reap-vscode-sockets: reaps VS Code's CLI/git IPC sockets, then runs
     # `command`. Requires devcontainer.json overrideCommand:false so VS Code keeps it.
     entrypoint: ['/usr/local/bin/reap-vscode-sockets']
     command: ['sleep', 'infinity']
@@ -28,12 +30,12 @@ services:
       - 'no-new-privileges:true'
     volumes:
       - ..:/workspace:cached
-      - ${HOME}/.bash_history:/home/vscode/.bash_history:cached
-      - ${HOME}/.claude:/home/vscode/.claude:cached
-      - ${HOME}/.claude.json:/home/vscode/.claude.json:cached
+      - ${HOME}/.bash_history:/home/${USER}/.bash_history:cached
+      - ${HOME}/.claude:/home/${USER}/.claude:cached
+      - ${HOME}/.claude.json:/home/${USER}/.claude.json:cached
       # commit-signing key only, read-only — NOT the whole ~/.ssh.
-      - ${HOME}/.ssh/id_ed25519:/home/vscode/.ssh/id_ed25519:ro
-      - ${HOME}/.ssh/id_ed25519.pub:/home/vscode/.ssh/id_ed25519.pub:ro
+      - ${HOME}/.ssh/id_ed25519:/home/${USER}/.ssh/id_ed25519:ro
+      - ${HOME}/.ssh/id_ed25519.pub:/home/${USER}/.ssh/id_ed25519.pub:ro
       # The credentials shelf: the sidecars vend narrow, short-lived credentials here; the
       # workspace (agents included) can only read them. base's devcred/git/gh/aws shims read it.
       - creds-shelf:/creds:ro
@@ -52,7 +54,7 @@ services:
       # Space-separated ~/.aws/config profiles to vend; the first also becomes [default].
       VEND_AWS_PROFILES: 084828575849-developer-ai-agent
     volumes:
-      - admin-home:/home/vscode
+      - admin-home:/home/${USER}
       - creds-shelf:/creds
 
   credentials-github:
@@ -69,7 +71,7 @@ services:
       VEND_GH_AWS_PROFILE: 253490790167-developer-tool-user
       VEND_GH_AWS_REGION: us-east-1
     volumes:
-      - admin-home:/home/vscode
+      - admin-home:/home/${USER}
       - creds-shelf:/creds
 
 volumes:

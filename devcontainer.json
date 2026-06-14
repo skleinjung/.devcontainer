@@ -30,9 +30,9 @@
         // Don't inject VS Code's host-credential-proxy helper into the container's gitconfig
         // (a separate path that bridges the HOST's stored git credentials in). Neither this
         // nor useIntegratedAskPass alone is sufficient — see vscode-remote-release#4426.
-        "remote.containers.gitCredentialHelperConfigLocation": "none",
+        "dev.containers.gitCredentialHelperConfigLocation": "none",
         // Don't copy the host's ~/.gitconfig / .git-credentials into the container.
-        "remote.containers.copyGitConfig": false,
+        "dev.containers.copyGitConfig": false,
         // Don't register VS Code as the terminal Git editor — its git-editor IPC socket is
         // reaped (entrypoint), and git uses nano (core.editor, set by base) instead.
         "git.terminalGitEditor": false,
@@ -79,7 +79,7 @@
     "BROWSER": "",
     "GPG_AGENT_INFO": ""
   },
-  "remoteUser": "vscode",
+  "remoteUser": "${localEnv:USER}",
   "service": "workspace",
   "workspaceFolder": "/workspace"
 }
