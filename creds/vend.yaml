@@ -1,0 +1,36 @@
+# What this sidecar vends to the shelf. See opus → nodejs/devcontainer/credential-shelf
+# for the full schema. The signer (developer-tool-user, holds kms:Sign) is written to
+# ~/.aws/config for the GitHub loops but never reaches the shelf.
+#
+# One github-app provider for App 3967552; each installation is a grant (installation_id per
+# grant). grant name = org, since the gh wrapper looks up tokens by org.
+providers:
+  - kind: aws-sso
+    options:
+      start_url: https://d-9067c161a5.awsapps.com/start/
+      region: us-east-1
+    grants:
+      - account_id: "084828575849"
+        role: developer-ai-agent
+
+  - kind: github-app
+    options:
+      app_id: "3967552"
+      kms_key_id: alias/github-app-signer
+      region: us-east-1
+      signer:
+        account_id: "253490790167"
+        role: developer-tool-user
+    grants:
+      - name: twin-digital
+        installation_id: "139694269"
+        repos: [aws, opus]
+      - name: skleinjung
+        installation_id: "139866498"
+      - name: pegasuspad
+        installation_id: "139866905"
+        repos: [infrastructure, music, monorepo, backup-controller]
+      - name: thrashplay
+        installation_id: "139867144"
+      - name: shardworks
+        installation_id: "139867316"
