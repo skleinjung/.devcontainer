@@ -1,11 +1,9 @@
-# Specialized layer on top of the `workspace` image (the former base+default, folded
-# together — opus nodejs/devcontainer/workspace). That image provides: no-sudo + the
-# unprivileged user, the VS Code host-channel scrub, the IPC socket reaper
-# (reap-vscode-sockets), the credential consumer shims (devcred + the git/gh helpers +
-# AWS_SHARED_CREDENTIALS_FILE), the keep-alive CMD, and the baked toolchains (aws-cli, gh,
-# node/nvm, python, terraform, gnupg2, yq) that used to come from devcontainer.json
-# `features`. Everything below is project-specific: pandoc, Claude Code, the rootfs helpers
-# (tf, aws-get-account-id), the home seed, and the lifecycle scripts.
+# Project layer on top of the `workspace` image (ghcr.io/twin-digital/workspace), which
+# provides the security hardening (no-sudo, the VS Code host-channel scrub, the IPC socket
+# reaper), the credential consumer shims (devcred + the git/gh helpers +
+# AWS_SHARED_CREDENTIALS_FILE), the keep-alive CMD, and the toolchains (aws-cli, gh, node/nvm,
+# python, terraform, gnupg2, yq). Everything below is project-specific: pandoc, Claude Code,
+# the rootfs helpers (tf, aws-get-account-id), the home seed, and the lifecycle scripts.
 FROM ghcr.io/twin-digital/workspace:latest
 
 # Pinned tool versions (kept at the top so they're easy to see and bump).
@@ -44,13 +42,11 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
 
 # ── Our files (edited more often; kept late so changes don't bust the cache above) ───────
-# rootfs: the tf + aws-get-account-id helpers. (The VS Code scrub and the github.com
-# credential wiring now come from base — we no longer ship them here.)
+# rootfs: the project's tf + aws-get-account-id helpers.
 COPY rootfs/ /
 
 COPY home/ /home/${USERNAME}/
-# Lifecycle scripts only (post-create/post-attach + their .d drop-ins) and gh-token-seed.
-# The gh/git credential shims and the socket reaper are provided by base — not shipped here.
+# Lifecycle scripts (post-create/post-attach + their .d drop-ins) and gh-token-seed.
 COPY scripts/container/ /usr/local/bin/
 RUN find /usr/local/bin -type f -exec chmod +x {} \; \
   && chown -R "${USERNAME}:${USERNAME}" /home/${USERNAME}

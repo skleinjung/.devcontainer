@@ -3,9 +3,9 @@
     "NODE_OPTIONS": "--experimental-transform-types --no-warnings=ExperimentalWarning",
     "PW_CHROMIUM_SANDBOX": "0",
     "VSCODE_AGENT_FOLDER": "/vscode",
-    // base sets AWS_SHARED_CREDENTIALS_FILE=/creds/aws/credentials, so the workspace reads
-    // the vended AWS creds with no config here. (Don't set AWS_PROFILE to an SSO profile —
-    // it would override the shelf [default].)
+    // the workspace image sets AWS_SHARED_CREDENTIALS_FILE=/creds/aws/credentials, so the
+    // workspace reads the vended AWS creds with no config here. (Don't set AWS_PROFILE to an
+    // SSO profile — it would override the shelf [default].)
     //
     // This workspace's primary GitHub org — base's devcred/git/gh shims use it when no repo
     // context pins one. Must match a vended org (a github-app grant in creds/vend.yaml).
@@ -41,11 +41,10 @@
     }
   },
   "dockerComposeFile": ["docker-compose.yml"],
-  // No `features`: the toolchains (aws-cli, github-cli, node/nvm, python, terraform) are
-  // baked into the `workspace` image, so a rebuild pulls cached layers instead of re-running
-  // feature installs every time. Docker is intentionally absent — the host socket gives
-  // agents root-equivalent reach onto the host (replacement: an external agent-domain
-  // daemon, twin-digital/opus#164).
+  // The toolchains (aws-cli, github-cli, node/nvm, python, terraform) come baked into the
+  // `workspace` image, so there's no `features` block. Docker is intentionally absent — the
+  // host socket gives agents root-equivalent reach onto the host (replacement: an external
+  // agent-domain daemon, twin-digital/opus#164).
   "forwardPorts": [3001, 7470],
   "portsAttributes": {},
   "init": true,
