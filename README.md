@@ -3,7 +3,7 @@
 A hardened dev container built on the **[`devcontainers` toolkit](../devcontainers)**: the
 `workspace` runs on the toolkit's `default` image plus a thin specialized layer
 ([Dockerfile](./Dockerfile) — pandoc, Claude Code, `tf`/`aws-get-account-id`, dotfiles),
-and two **credential sidecars** vend short-lived, scoped AWS + GitHub credentials onto a
+and a **credential sidecar** vends short-lived, scoped AWS + GitHub credentials onto a
 read-only `/creds` shelf the workspace consumes.
 
 - **Patterns** (trust model, VS Code channel hardening, container isolation, the credential
@@ -18,35 +18,34 @@ read-only `/creds` shelf the workspace consumes.
 | | Image | Role |
 |---|---|---|
 | `workspace` | `default` + [Dockerfile](./Dockerfile) | the dev container; reads `/creds` via base's `devcred`/git/gh/aws shims |
-| `credentials-aws` | `credential-shelf-aws` | vends the AWS agent role → `/creds/aws/credentials` |
-| `credentials-github` | `credential-shelf-github` + [github-creds/](./github-creds) | vends per-org GitHub App tokens → `/creds/github/<org>` |
+| `credentials` | `credential-shelf` + [creds/](./creds) | one image, N loops — vends the AWS agent role → `/creds/aws/credentials` and per-org GitHub App tokens → `/creds/github/<org>` |
 
-The sidecars share an `admin-home` volume (the SSO session) so one login serves both; that
-home is mounted into **no** consumer. The workspace has no SSO session and no `kms:Sign` —
-it can only read what's vended.
+The sidecar holds the SSO session + `kms:Sign` in an `admin-home` volume mounted into **no**
+consumer. The workspace has neither — it can only read what's vended.
 
 ## First run (one-time)
 
-1. **Publish/pull the toolkit images** (`default`, `credential-shelf-*`) — CI on
-   `skleinjung/devcontainers`.
-2. **GitHub App key → KMS** (once, if not already done): in the github sidecar,
+1. **Publish/pull the images** (`workspace`, `credential-shelf`) — built + pushed to
+   `ghcr.io/twin-digital/*` by the opus monorepo publish workflow.
+2. **GitHub App key → KMS** (once, if not already done): in the sidecar,
    `import-app-private-key <app-key.pem>` imports it as a non-extractable KMS key; set the
-   alias as `VEND_GH_KMS_KEY_ID`, grant `kms:Sign` to `VEND_GH_AWS_PROFILE`, shred the `.pem`.
-3. **Set the SSO start URL** — `VEND_AWS_SSO_START_URL` on `credentials-aws` in
-   `docker-compose.yml`. The account/role(s) live in `aws-creds/accounts.yaml`; the sidecar
-   renders the shared `~/.aws/config` from them on start (no hand-authoring).
+   alias as `kms_key_id` in `creds/vend.yaml`, grant `kms:Sign` to the signer role, shred the `.pem`.
+3. **Configure what's vended** — [creds/vend.yaml](./creds/vend.yaml): the `aws-sso`
+   provider's start URL + grant(s), and a `github-app` provider per installation. The sidecar
+   renders the shared `~/.aws/config` from it on start (no hand-authoring).
 4. **SSO login** — log in once (device-code flow; `AWS_SSO_USE_DEVICE_CODE=1` is set):
    ```sh
-   docker exec -it <project>-credentials-aws-1 aws sso login --profile 084828575849-developer-ai-agent
+   docker exec -it <project>-credentials-1 refresh-credentials
    ```
-   Within ~60s both sidecars vend.
+   `refresh-credentials` does the device-code login for every configured session (no profile
+   name needed) and vends immediately; within ~60s all loops are serving creds.
 
 ## Daily use
 
-- **Re-login** when the Identity Center session lapses (~8h): repeat the `aws sso login` above.
-  One login revives both vend loops within 60s.
+- **Re-login** when the Identity Center session lapses (~8h): re-run `refresh-credentials`
+  above. One login revives every vend loop (they share the one session).
 - **Health**: `cat /creds/status/*` (`ok expires=…` / `stalled …`; mtime is a heartbeat) or
-  `docker logs -f <project>-credentials-aws-1`.
+  `docker logs -f <project>-credentials-1`.
 - `git push/pull` over HTTPS and `aws`/`gh` "just work" via base's shims; nothing in the
   workspace can mint or widen a credential.
 
@@ -61,30 +60,30 @@ it can only read what's vended.
 
 | Symptom | Meaning | Fix |
 |---|---|---|
-| `aws`/`gh`/`git` unauthenticated, `devcred` breadcrumb | shelf creds aged out (vend stalled) | `aws sso login` in `credentials-aws` |
-| `/creds/status/*` says `stalled since=…` | a vend loop can't reach SSO/KMS | `docker logs <…-credentials-*-1>`; usually re-login |
+| `aws`/`gh`/`git` unauthenticated, `devcred` breadcrumb | shelf creds aged out (vend stalled) | `refresh-credentials` in `credentials` |
+| `/creds/status/*` says `stalled since=…` | a vend loop can't reach SSO/KMS | `docker logs <…-credentials-1>`; usually re-login |
 | `gh`/`git` wrong-org / "no valid token" | no repo context + `GH_DEFAULT_ORG` unset/not-vended | pass `-R <org>/<repo>` or set `GH_DEFAULT_ORG` to a vended org |
-| status mtime >5 min old | a sidecar isn't running | `docker compose up -d` (host, from the workspace project) |
+| status mtime >5 min old | the sidecar isn't running | `docker compose up -d` (host, from the workspace project) |
 | `/creds` missing | container built without the shelf mount | rebuild the workspace |
 
 ## Changing what's vended
 
-- **AWS scope**: edit [aws-creds/accounts.yaml](./aws-creds/accounts.yaml) (one entry per
-  role; `vend: false` keeps a role in `~/.aws/config` but off the shelf) and **rebuild** the
-  `credentials-aws` sidecar.
-- **GitHub orgs/repos**: edit [github-creds/installations.json](./github-creds/installations.json)
-  (one entry per org: `{ "org", "installation_id", "repos"?, "perms"? }`) and **rebuild** the
-  github sidecar — it's baked into the image (a reviewed rebuild, not a `/workspace` mount). For
-  a new org, install the App on it first and note its installation id. Consumers route per-org
-  automatically (`git` by request path, `gh` by `-R`/cwd), so it's a config change, not code.
+Edit [creds/vend.yaml](./creds/vend.yaml) and **rebuild** the `credentials` sidecar — it's
+baked into the image (a reviewed rebuild, not a `/workspace` mount).
+
+- **AWS scope**: add/remove grants under the `aws-sso` provider (one per account+role).
+- **GitHub orgs/repos**: add a `github-app` provider per installation, with one grant per org
+  (`name`, optional `repos`/`perms`). For a new org, install the App on it first and note its
+  installation id. Consumers route per-org automatically (`git` by request path, `gh` by
+  `-R`/cwd), so it's a config change, not code.
 
 ## Rebuilding (keep all services in one compose project)
 
 The `creds-shelf` volume is shared **only within one compose project** (Docker names it
 `<project>_creds-shelf`). **Rebuild from VS Code** ("Dev Containers: Rebuild Container"), which
-recreates the workspace + both sidecars in one project. A bare `docker compose up -d` from the
-host outside that project would create an orphaned sidecar on a different volume the workspace
-can't read. After a rebuild the `admin-home` volume may be fresh, so re-run `aws sso login` once.
+recreates the workspace + sidecar in one project. A bare `docker compose up -d` from the host
+outside that project would create an orphaned sidecar on a different volume the workspace can't
+read. After a rebuild the `admin-home` volume may be fresh, so re-run `refresh-credentials` once.
 
 ## Change discipline
 

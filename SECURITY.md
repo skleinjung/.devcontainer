@@ -27,20 +27,23 @@ instantiated here:
 |------|------|-------|
 | 1. **Windows desktop** | VS Code desktop client + SSH agent (one FIDO hardware key) | the hardware key + client — no source, creds, or secrets |
 | 2. **External Linux host** | VS Code remote server, Docker daemon | the daemon is the root-equivalent boundary |
-| 3. **credential sidecars** (`credentials-aws`, `credentials-github`) | trusted, **vend-only** | the SSO session + GitHub App signing (KMS) — and nothing else (no shells, no `lpass`/`ansible`/`terraform`) |
+| 3. **credential sidecar** (`credentials`) | trusted, **vend-only** | the SSO session + GitHub App signing (KMS) — and nothing else (no shells, no `lpass`/`ansible`/`terraform`) |
 | 4. **`workspace` container** | agents + untrusted code | only short-lived, scoped, vended creds |
 
 ---
 
 ## What this devcontainer vends
 
-- **AWS** (`credentials-aws`, image `credential-shelf-aws`): the `developer-ai-agent`
-  role (≤1h) → `/creds/aws/credentials`; `base` points `AWS_SHARED_CREDENTIALS_FILE` at
-  it. The full SSO session stays in the sidecar.
-- **GitHub** (`credentials-github`, derived from `credential-shelf-github`): per-org
-  GitHub App **installation tokens** (≤1h, scoped to named repos) → `/creds/github/<org>`.
-  Which orgs/repos/perms are vended is **baked into the sidecar image** from
-  `github-creds/installations.json`; the App signing key never leaves KMS.
+The `credentials` sidecar (image `credential-shelf`, one image / N loops) vends both:
+
+- **AWS** (the `aws-sso` provider): the `developer-ai-agent` role (≤1h) →
+  `/creds/aws/credentials`; `base` points `AWS_SHARED_CREDENTIALS_FILE` at it. The full SSO
+  session stays in the sidecar.
+- **GitHub** (a `github-app` provider per installation): per-org GitHub App **installation
+  tokens** (≤1h, scoped to named repos) → `/creds/github/<org>`. Which orgs/repos/perms are
+  vended is **baked into the sidecar image** from `creds/vend.yaml`; the App signing key
+  never leaves KMS, and its `kms:Sign` signer profile is written to the sidecar's
+  `~/.aws/config` but never to the shelf.
 - **Transport:** the read-only `/creds` **file shelf** — the same vended secrets for every
   consumer. (Per-consumer policy / on-demand broker is a toolkit target — see *Deviations*.)
 
@@ -89,10 +92,10 @@ values this container must hold:
 | `GH_DEFAULT_ORG` | a **vended** org |
 | `SCRUB_SSH_AUTH_SOCK_ENABLED` | `false` — keep the forwarded FIDO agent (see *Mounts*) |
 | `creds-shelf` mount | **`:ro`** in the workspace |
-| the sidecars' `admin-home` volume | **never** mounted into the workspace |
+| the sidecar's `admin-home` volume | **never** mounted into the workspace |
 | `github.com` `credential.helper` | `devcred` (set by `base`) |
 | compose `entrypoint` | `reap-vscode-sockets` (base's reaper) + `overrideCommand: false` |
-| `github-creds/installations.json` | **baked into the `credentials-github` image**, not bind-mounted from `/workspace` |
+| `creds/vend.yaml` | **baked into the `credentials` image**, not bind-mounted from `/workspace` |
 
 ---
 

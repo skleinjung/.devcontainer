@@ -1,10 +1,12 @@
-# Specialized layer on top of the toolkit `default` image. The toolkit (base+default)
-# now provides: no-sudo + the unprivileged user, the VS Code host-channel scrub, the IPC
-# socket reaper (reap-vscode-sockets), the credential consumer shims (devcred + the git/gh
-# helpers + AWS_SHARED_CREDENTIALS_FILE), gnupg2/yq, and the keep-alive CMD. Everything
-# below is project-specific: pandoc, Claude Code, the rootfs helpers (tf,
-# aws-get-account-id), the home seed, and the lifecycle scripts.
-FROM ghcr.io/skleinjung/devcontainers/default:latest
+# Specialized layer on top of the `workspace` image (the former base+default, folded
+# together — opus nodejs/devcontainer/workspace). That image provides: no-sudo + the
+# unprivileged user, the VS Code host-channel scrub, the IPC socket reaper
+# (reap-vscode-sockets), the credential consumer shims (devcred + the git/gh helpers +
+# AWS_SHARED_CREDENTIALS_FILE), the keep-alive CMD, and the baked toolchains (aws-cli, gh,
+# node/nvm, python, terraform, gnupg2, yq) that used to come from devcontainer.json
+# `features`. Everything below is project-specific: pandoc, Claude Code, the rootfs helpers
+# (tf, aws-get-account-id), the home seed, and the lifecycle scripts.
+FROM ghcr.io/twin-digital/workspace:latest
 
 # Pinned tool versions (kept at the top so they're easy to see and bump).
 ARG PANDOC_VERSION=3.8.3
@@ -18,24 +20,21 @@ RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION
   && tar xzf /tmp/pandoc.tar.gz --strip-components 1 -C /usr/local/ \
   && rm /tmp/pandoc.tar.gz
 
-# The unprivileged dev account. Defaults to the base image's `vscode` at uid/gid
-# 1000; override (e.g. to match a host user) with `--build-arg`, e.g.
-# `--build-arg USERNAME=alice --build-arg USER_UID=1001 --build-arg USER_GID=1001`.
+# The unprivileged dev account. The username is configurable (--build-arg USERNAME=alice);
+# uid/gid are pinned to 1000 and NOT overridable — the credential shelf vends 0600 files
+# owned by uid 1000, so the consumer must run as 1000 to read them, and the workspace
+# image's nvm dir is chowned to 1000. Renaming the user keeps that uid.
 ARG USERNAME=vscode
-ARG USER_UID=1000
-ARG USER_GID=1000
 
-# Drop the base image's pre-made users (uid >= 1000) and any residual sudoers grant
-# files — the base grants its `vscode` user passwordless sudo via /etc/sudoers.d/vscode,
-# and userdel removes the account but not that file. Then (re)create USERNAME as a
-# plain, unprivileged account at the requested uid/gid.
+# Drop the workspace image's pre-made users (uid >= 1000) and any residual sudoers grant
+# files, then (re)create USERNAME as a plain, unprivileged account at uid/gid 1000.
 RUN getent passwd \
     | awk -F: '($3 >= 1000) && ($1 != "nobody") {print $1}' \
     | xargs -r -n 1 userdel -r \
   && rm -rf /etc/sudoers.d/* \
   && if [ "${USERNAME}" != "root" ]; then \
-       groupadd --gid "${USER_GID}" "${USERNAME}" || true \
-       && useradd -s /bin/bash -m -u "${USER_UID}" -g "${USER_GID}" "${USERNAME}"; \
+       groupadd --gid 1000 "${USERNAME}" || true \
+       && useradd -s /bin/bash -m -u 1000 -g 1000 "${USERNAME}"; \
      fi
 
 # claude code — installed as the user (to ~/.local). Kept here, ahead of the frequently-

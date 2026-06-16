@@ -40,48 +40,27 @@ services:
       # workspace (agents included) can only read them. base's devcred/git/gh/aws shims read it.
       - creds-shelf:/creds:ro
 
-  # ── credential sidecars (toolkit images) — vend short-lived scoped creds to the shelf ────
-  # They share `admin-home`, so a single `aws sso login` serves both; that home (the SSO
-  # session) is mounted into NO consumer. Enter from a HOST terminal to log in:
-  #   docker exec -it <project>-credentials-aws-1 aws sso login --profile 084828575849-developer-ai-agent
+  # ── credential sidecar (toolkit image) — vends AWS + GitHub to the read-only shelf ──────
+  # One image, N loops (AWS + per-installation GitHub), driven by creds/vend.yaml. admin-home
+  # (the SSO session + kms:Sign) is mounted into NO consumer. Log in from a HOST terminal:
+  #   docker exec -it <project>-credentials-1 refresh-credentials
 
-  credentials-aws:
-    # Derived image that bakes aws-creds/accounts.yaml (which account/role(s) to vend) — a
-    # reviewed rebuild, not a /workspace bind-mount. On start it renders the shared
-    # ~/.aws/config from accounts.yaml + the SSO env below.
-    build: ./aws-creds
+  credentials:
+    # Derived image that bakes creds/vend.yaml (what to vend) — a reviewed rebuild, not a
+    # /workspace bind-mount. On start it renders the shared ~/.aws/config from vend.yaml and
+    # runs an AWS loop + one GitHub loop per installation.
+    build: ./creds
     init: true
     restart: unless-stopped
     environment:
       # No reachable localhost callback in here (bridge net) — use the SSO device-code flow.
       AWS_SSO_USE_DEVICE_CODE: '1'
-      # Upstream IAM Identity Center session. The account/role(s) to vend live in
-      # aws-creds/accounts.yaml.
-      VEND_AWS_SSO_START_URL: https://d-9067c161a5.awsapps.com/start/
-      VEND_AWS_SSO_REGION: us-east-1
     volumes:
-      - admin-home:/home/${USER}
-      - creds-shelf:/creds
-
-  credentials-github:
-    # Derived image that bakes github-creds/installations.json (which orgs/repos to vend) —
-    # a reviewed rebuild, not a /workspace bind-mount.
-    build: ./github-creds
-    init: true
-    restart: unless-stopped
-    environment:
-      AWS_SSO_USE_DEVICE_CODE: '1'
-      VEND_GH_APP_ID: '3967552'
-      VEND_GH_KMS_KEY_ID: alias/github-app-signer
-      # Holds kms:Sign on the signing key (the App key never leaves KMS).
-      VEND_GH_AWS_PROFILE: 253490790167-developer-tool-user
-      VEND_GH_AWS_REGION: us-east-1
-    volumes:
-      - admin-home:/home/${USER}
+      - admin-home:/home/credential-vendor
       - creds-shelf:/creds
 
 volumes:
-  # Written only by the credential sidecars; read-only in the workspace.
+  # Written only by the credential sidecar; read-only in the workspace.
   creds-shelf:
-  # The sidecars' shared $HOME (SSO cache + ~/.aws). Never mounted into the workspace.
+  # The sidecar's $HOME (SSO cache + ~/.aws). Never mounted into the workspace.
   admin-home:

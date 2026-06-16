@@ -8,7 +8,7 @@
     // it would override the shelf [default].)
     //
     // This workspace's primary GitHub org — base's devcred/git/gh shims use it when no repo
-    // context pins one. Must match a vended org (github-creds/installations.json).
+    // context pins one. Must match a vended org (a github-app grant in creds/vend.yaml).
     "GH_DEFAULT_ORG": "skleinjung",
     // Default region for AWS CLI/SDK calls — the vended credentials file carries no region.
     "AWS_REGION": "us-east-1",
@@ -41,17 +41,11 @@
     }
   },
   "dockerComposeFile": ["docker-compose.yml"],
-  "features": {
-    "ghcr.io/devcontainers/features/aws-cli:1": {},
-    // Docker is intentionally absent: the host socket gives agents root-equivalent reach onto
-    // the host. Replacement is an external agent-domain daemon (twin-digital/opus#164).
-    "ghcr.io/devcontainers/features/github-cli:1": {},
-    "ghcr.io/devcontainers/features/node:1": {
-      "version": "24"
-    },
-    "ghcr.io/devcontainers/features/python:1": {},
-    "ghcr.io/devcontainers/features/terraform:1": {}
-  },
+  // No `features`: the toolchains (aws-cli, github-cli, node/nvm, python, terraform) are
+  // baked into the `workspace` image, so a rebuild pulls cached layers instead of re-running
+  // feature installs every time. Docker is intentionally absent — the host socket gives
+  // agents root-equivalent reach onto the host (replacement: an external agent-domain
+  // daemon, twin-digital/opus#164).
   "forwardPorts": [3001, 7470],
   "portsAttributes": {},
   "init": true,
