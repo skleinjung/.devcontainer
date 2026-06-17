@@ -4,10 +4,10 @@ The security **patterns** — the trust model, the VS Code host-channel hardenin
 container isolation, credential vending, the general discipline, and the research
 sources — are documented in opus, in:
 
-- **[opus docs/devcontainer/SECURITY.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECURITY.md)** — trust
+- **[opus credential-shelf/docs/SECURITY.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECURITY.md)** — trust
   model, the workspace↔host channel hardening, container isolation, extension-host
   RCE, discipline, the attacker summary, invariants, and sources.
-- **[opus docs/devcontainer/SECRETS.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECRETS.md)** —
+- **[opus credential-shelf/docs/SECRETS.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECRETS.md)** —
   the credential contract (`devcred`, transports, naming).
 
 This file records only what is **specific to this devcontainer** — its concrete trust
