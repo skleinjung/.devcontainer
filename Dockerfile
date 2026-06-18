@@ -18,6 +18,20 @@ RUN curl -fsSL "https://github.com/jgm/pandoc/releases/download/${PANDOC_VERSION
   && tar xzf /tmp/pandoc.tar.gz --strip-components 1 -C /usr/local/ \
   && rm /tmp/pandoc.tar.gz
 
+# Docker CLI — client only, no daemon. This workspace runs its Docker workloads against an
+# external agent-domain engine over SSH (DOCKER_HOST, set in devcontainer.json), so it needs
+# the client (plus the Buildx and Compose plugins — both client-side) but not dockerd or a host
+# socket. Build-time as root from Docker's apt repo; the container is no-sudo/no-new-privileges.
+RUN install -m0755 -d /etc/apt/keyrings \
+  && curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc \
+  && chmod a+r /etc/apt/keyrings/docker.asc \
+  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo \"${VERSION_CODENAME}\") stable" \
+       > /etc/apt/sources.list.d/docker.list \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends docker-ce-cli docker-buildx-plugin docker-compose-plugin \
+  && apt-get clean \
+  && rm -rf /var/lib/apt/lists/*
+
 # The unprivileged dev account. The username is configurable (--build-arg USERNAME=alice);
 # uid/gid are pinned to 1000 and NOT overridable — the credential shelf vends 0600 files
 # owned by uid 1000, so the consumer must run as 1000 to read them, and the workspace
