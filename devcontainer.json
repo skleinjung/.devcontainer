@@ -17,7 +17,12 @@
     "SCRUB_SSH_AUTH_SOCK_ENABLED": "false",
     // Make Claude Code fetch the plugin marketplace over HTTPS instead of git@github.com
     // (ssh), so it rides the App-token auth instead of prompting a hardware touch on startup.
-    "CLAUDE_CODE_PLUGIN_PREFER_HTTPS": "1"
+    "CLAUDE_CODE_PLUGIN_PREFER_HTTPS": "1",
+    // Point the Docker CLI at the external agent-domain engine over SSH (twin-digital/opus#164)
+    // — no local daemon, no host socket. build/pull/run happen on the remote host; the SSH
+    // transport reuses the forwarded agent and connects as the container user. Short hostname
+    // (not IP) so it tracks DHCP.
+    "DOCKER_HOST": "ssh://prod-development-docker"
   },
   "customizations": {
     "vscode": {
@@ -42,9 +47,10 @@
   },
   "dockerComposeFile": ["docker-compose.yml"],
   // The toolchains (aws-cli, github-cli, node/nvm, python, terraform) come baked into the
-  // `workspace` image, so there's no `features` block. Docker is intentionally absent — the
-  // host socket gives agents root-equivalent reach onto the host (replacement: an external
-  // agent-domain daemon, twin-digital/opus#164).
+  // `workspace` image, so there's no `features` block. Only the Docker CLI is installed (in
+  // this project's Dockerfile) — no daemon and no host socket, which would give agents
+  // root-equivalent reach onto the host. Docker workloads run on an external agent-domain
+  // engine via DOCKER_HOST above (twin-digital/opus#164).
   "forwardPorts": [3001, 7470],
   "portsAttributes": {},
   "init": true,
