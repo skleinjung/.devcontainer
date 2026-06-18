@@ -7,7 +7,7 @@ short-lived, scoped AWS + GitHub credentials onto a read-only `/creds` shelf the
 consumes.
 
 - **Patterns** (trust model, VS Code channel hardening, container isolation, the credential
-  contract) live in opus: [docs/devcontainer/SECURITY.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECURITY.md)
+  contract) live in opus: [credential-shelf/docs/SECURITY.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECURITY.md)
   and [SECRETS.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECRETS.md).
 - **What's specific to this devcontainer** (trust tiers, what it vends, mounts, invariants)
   is in [SECURITY.md](./SECURITY.md).
