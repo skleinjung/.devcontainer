@@ -2,12 +2,12 @@
 
 The security **patterns** — the trust model, the VS Code host-channel hardening,
 container isolation, credential vending, the general discipline, and the research
-sources — are the toolkit's, documented once in:
+sources — are documented in opus, in:
 
-- **[devcontainers/docs/SECURITY.md](../devcontainers/docs/SECURITY.md)** — trust
+- **[opus docs/devcontainer/SECURITY.md](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md)** — trust
   model, the workspace↔host channel hardening, container isolation, extension-host
   RCE, discipline, the attacker summary, invariants, and sources.
-- **[devcontainers/docs/SECRETS.md](../devcontainers/docs/SECRETS.md)** —
+- **[opus docs/devcontainer/SECRETS.md](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECRETS.md)** —
   the credential contract (`devcred`, transports, naming).
 
 This file records only what is **specific to this devcontainer** — its concrete trust
@@ -20,7 +20,7 @@ troubleshooting) are in [README.md](./README.md).
 
 ## Concrete trust tiers
 
-The toolkit's [tier *concept*](../devcontainers/docs/SECURITY.md#2-trust-tiers--the-concept),
+The toolkit's [tier *concept*](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#2-trust-tiers--the-concept),
 instantiated here:
 
 | Tier | Runs | Holds |
@@ -37,7 +37,7 @@ instantiated here:
 The `credentials` sidecar (image `credential-shelf`, one image / N loops) vends both:
 
 - **AWS** (the `aws-sso` provider): the `developer-ai-agent` role (≤1h) →
-  `/creds/aws/credentials`; `base` points `AWS_SHARED_CREDENTIALS_FILE` at it. The full SSO
+  `/creds/aws/credentials`; the `workspace` image points `AWS_SHARED_CREDENTIALS_FILE` at it. The full SSO
   session stays in the sidecar.
 - **GitHub** (a `github-app` provider per installation): per-org GitHub App **installation
   tokens** (≤1h, scoped to named repos) → `/creds/github/<org>`. Which orgs/repos/perms are
@@ -47,7 +47,7 @@ The `credentials` sidecar (image `credential-shelf`, one image / N loops) vends 
 - **Transport:** the read-only `/creds` **file shelf** — the same vended secrets for every
   consumer. (Per-consumer policy / on-demand broker is a toolkit target — see *Deviations*.)
 
-The consumer side (`devcred` + the git/gh/aws shims that read the shelf) comes from `base`.
+The consumer side (`devcred` + the git/gh/aws shims that read the shelf) comes from the `workspace` image.
 
 ---
 
@@ -56,7 +56,7 @@ The consumer side (`devcred` + the git/gh/aws shims that read the shelf) comes f
 - **Commit-signing key:** `~/.ssh/id_ed25519` (+`.pub`) mounted **read-only** — the
   commit-signing key *only*, not the whole `~/.ssh`.
 - **`SSH_AUTH_SOCK`:** the forwarded FIDO/YubiKey agent (hardware-touch-gated). This setup
-  **opts out of `base`'s default `SSH_AUTH_SOCK` scrub** (`SCRUB_SSH_AUTH_SOCK_ENABLED=false`)
+  **opts out of the `workspace` image's default `SSH_AUTH_SOCK` scrub** (`SCRUB_SSH_AUTH_SOCK_ENABLED=false`)
   because it relies on the forwarded agent for SSH-remote git — safe *only* because the key
   is hardware-touch-gated. **Invariant: never add a non-touch key to it.**
 
@@ -65,7 +65,7 @@ The consumer side (`devcred` + the git/gh/aws shims that read the shelf) comes f
 ## Discipline specific to this setup
 
 The general discipline is in
-[SECURITY.md §11](../devcontainers/docs/SECURITY.md#11-human-discipline-the-patterns-depend-on-these).
+[SECURITY.md §11](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#11-human-discipline-the-patterns-depend-on-these).
 Specific to *this* setup:
 
 - **Never approve a hardware-key touch you didn't initiate.** Agents here run as the
@@ -74,27 +74,27 @@ Specific to *this* setup:
 - **Privileged ops (`terraform`/`deploy`/`lpass`) don't run in a local sidecar.** The
   credential sidecars are **vend-only** — they hold the SSO session + KMS sign, nothing
   else, and don't mount `/workspace`. Run privileged applies in a controlled CI/CD
-  environment, and review agent-authored diffs before they do ([the toolkit's
-  "applying agent output re-crosses the boundary"](../devcontainers/docs/SECURITY.md#3-what-this-does-not-protect)).
+  environment, and review agent-authored diffs before they do ([the design doc's
+  "applying agent output re-crosses the boundary"](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#3-what-this-does-not-protect)).
 
 ---
 
 ## Concrete config invariants
 
 The toolkit invariants
-([§13](../devcontainers/docs/SECURITY.md#13-invariants-dont-regress-these)), with the
+([§13](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#13-invariants-dont-regress-these)), with the
 values this container must hold:
 
 | Item | Required value |
 |---|---|
-| `AWS_SHARED_CREDENTIALS_FILE` | `/creds/aws/credentials` (set by `base`) |
+| `AWS_SHARED_CREDENTIALS_FILE` | `/creds/aws/credentials` (set by the `workspace` image) |
 | `AWS_PROFILE` | **must NOT** be set to an SSO profile (would bypass the vended `[default]`) |
 | `GH_DEFAULT_ORG` | a **vended** org |
 | `SCRUB_SSH_AUTH_SOCK_ENABLED` | `false` — keep the forwarded FIDO agent (see *Mounts*) |
 | `creds-shelf` mount | **`:ro`** in the workspace |
 | the sidecar's `admin-home` volume | **never** mounted into the workspace |
-| `github.com` `credential.helper` | `devcred` (set by `base`) |
-| compose `entrypoint` | `reap-vscode-sockets` (base's reaper) + `overrideCommand: false` |
+| `github.com` `credential.helper` | `devcred` (set by the `workspace` image) |
+| compose `entrypoint` | `reap-vscode-sockets` (the workspace image's reaper) + `overrideCommand: false` |
 | `creds/vend.yaml` | **baked into the `credentials` image**, not bind-mounted from `/workspace` |
 
 ---
@@ -105,10 +105,10 @@ values this container must hold:
   sidecars; the agent is **not yet** split into its own container, so agents run as the
   workspace uid alongside the dev. The toolkit target is the three-container agent
   isolation in
-  [SECURITY.md §4](../devcontainers/docs/SECURITY.md#4-agent-isolation--separate-container-same-uid-mount-topology).
+  [SECURITY.md §4](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#4-agent-isolation--separate-container-same-uid-mount-topology).
 - **File shelf, not a broker.** Credentials are vended as read-only files (no per-request
   audit; same secrets for both consumers); the toolkit target is the on-demand broker in
-  [SECRETS.md](../devcontainers/docs/SECRETS.md).
+  [SECRETS.md](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECRETS.md).
 
 ---
 

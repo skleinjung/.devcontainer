@@ -23,7 +23,7 @@ services:
     hostname: workspace
     shm_size: 1g
     # Untrusted-code hardening: drop all Linux capabilities and block setuid escalation
-    # (base already removes sudo). Add a specific cap back only if a tool genuinely needs it.
+    # (the workspace image already removes sudo). Add a specific cap back only if a tool needs it.
     cap_drop:
       - ALL
     security_opt:
@@ -37,7 +37,7 @@ services:
       - ${HOME}/.ssh/id_ed25519:/home/${USER}/.ssh/id_ed25519:ro
       - ${HOME}/.ssh/id_ed25519.pub:/home/${USER}/.ssh/id_ed25519.pub:ro
       # The credentials shelf: the sidecars vend narrow, short-lived credentials here; the
-      # workspace (agents included) can only read them. base's devcred/git/gh/aws shims read it.
+      # workspace (agents included) can only read them. The workspace image's devcred/git/gh/aws shims read it.
       - creds-shelf:/creds:ro
 
   # ── credential sidecar (toolkit image) — vends AWS + GitHub to the read-only shelf ──────

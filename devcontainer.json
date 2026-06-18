@@ -7,12 +7,12 @@
     // workspace reads the vended AWS creds with no config here. (Don't set AWS_PROFILE to an
     // SSO profile — it would override the shelf [default].)
     //
-    // This workspace's primary GitHub org — base's devcred/git/gh shims use it when no repo
+    // This workspace's primary GitHub org — the workspace image's devcred/git/gh shims use it when no repo
     // context pins one. Must match a vended org (a github-app grant in creds/vend.yaml).
     "GH_DEFAULT_ORG": "skleinjung",
     // Default region for AWS CLI/SDK calls — the vended credentials file carries no region.
     "AWS_REGION": "us-east-1",
-    // base scrubs SSH_AUTH_SOCK from interactive shells by default; opt out — we use the
+    // the workspace image scrubs SSH_AUTH_SOCK from interactive shells by default; opt out — we use the
     // forwarded FIDO/YubiKey agent (hardware-touch-gated) for SSH-remote git.
     "SCRUB_SSH_AUTH_SOCK_ENABLED": "false",
     // Make Claude Code fetch the plugin marketplace over HTTPS instead of git@github.com
@@ -25,7 +25,7 @@
         "dev.containers.dockerCredentialHelper": false,
         // Don't inject GIT_ASKPASS: it forwards credential prompts to VS Code, which can hand
         // a process the human's broad VS Code GitHub OAuth token — far more than the scoped
-        // shelf tokens. git/gh are unaffected (they use base's devcred credential helper).
+        // shelf tokens. git/gh are unaffected (they use the workspace image's devcred credential helper).
         "git.useIntegratedAskPass": false,
         // Don't inject VS Code's host-credential-proxy helper into the container's gitconfig
         // (a separate path that bridges the HOST's stored git credentials in). Neither this
@@ -34,7 +34,7 @@
         // Don't copy the host's ~/.gitconfig / .git-credentials into the container.
         "dev.containers.copyGitConfig": false,
         // Don't register VS Code as the terminal Git editor — its git-editor IPC socket is
-        // reaped (entrypoint), and git uses nano (core.editor, set by base) instead.
+        // reaped (entrypoint), and git uses nano (core.editor, set by the workspace image) instead.
         "git.terminalGitEditor": false,
         "extensions": ["dbaeumer.vscode-eslint", "esbenp.prettier-vscode"]
       }
@@ -50,18 +50,18 @@
   "init": true,
   "initializeCommand": ".devcontainer/scripts/host/initialize.sh",
   "name": "Workspace",
-  // false so VS Code keeps the compose entrypoint (base's reap-vscode-sockets) instead of
+  // false so VS Code keeps the compose entrypoint (the workspace image's reap-vscode-sockets) instead of
   // replacing it with its own keep-alive.
   "overrideCommand": false,
   "postAttachCommand": "/usr/local/bin/post-attach",
   "postCreateCommand": "/usr/local/bin/post-create",
   "remoteEnv": {
     // Blank VS Code's host-reaching channels for every process VS Code spawns (terminals AND
-    // an agent's non-interactive `bash -c`). base's shell scrub additionally covers integrated
+    // an agent's non-interactive `bash -c`). the workspace image's shell scrub additionally covers integrated
     // terminals, where VS Code re-injects some of these on top of remoteEnv.
     //   GIT_ASKPASS / VSCODE_GIT_* : VS Code's askpass → the human's broad GitHub OAuth token.
     //   VSCODE_IPC_HOOK_CLI : the `code` CLI channel. BROWSER / GPG_AGENT_INFO : host launch/GPG.
-    // SSH_AUTH_SOCK is intentionally NOT blanked here (the forwarded FIDO agent); base's
+    // SSH_AUTH_SOCK is intentionally NOT blanked here (the forwarded FIDO agent); the workspace image's
     // default shell scrub of it is opted out via SCRUB_SSH_AUTH_SOCK_ENABLED above.
     "GIT_ASKPASS": "",
     "VSCODE_GIT_IPC_HANDLE": "",
