@@ -1,14 +1,14 @@
 # Workspace devcontainer
 
-A hardened dev container built on the **[`devcontainers` toolkit](../devcontainers)**: the
-`workspace` runs on the toolkit's `default` image plus a thin specialized layer
-([Dockerfile](./Dockerfile) — pandoc, Claude Code, `tf`/`aws-get-account-id`, dotfiles),
-and a **credential sidecar** vends short-lived, scoped AWS + GitHub credentials onto a
-read-only `/creds` shelf the workspace consumes.
+A hardened dev container built on the **`workspace` image** (`ghcr.io/twin-digital/workspace`,
+from the opus monorepo) plus a thin specialized layer ([Dockerfile](./Dockerfile) — pandoc,
+Claude Code, `tf`/`aws-get-account-id`, dotfiles), and a **credential sidecar** vends
+short-lived, scoped AWS + GitHub credentials onto a read-only `/creds` shelf the workspace
+consumes.
 
 - **Patterns** (trust model, VS Code channel hardening, container isolation, the credential
-  contract) live in the toolkit: [devcontainers/docs/SECURITY.md](../devcontainers/docs/SECURITY.md)
-  and [SECRETS.md](../devcontainers/docs/SECRETS.md).
+  contract) live in opus: [credential-shelf/docs/SECURITY.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECURITY.md)
+  and [SECRETS.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECRETS.md).
 - **What's specific to this devcontainer** (trust tiers, what it vends, mounts, invariants)
   is in [SECURITY.md](./SECURITY.md).
 - This file is the **operational guide** — first run, daily use, troubleshooting.
@@ -17,7 +17,7 @@ read-only `/creds` shelf the workspace consumes.
 
 | | Image | Role |
 |---|---|---|
-| `workspace` | `default` + [Dockerfile](./Dockerfile) | the dev container; reads `/creds` via base's `devcred`/git/gh/aws shims |
+| `workspace` | `twin-digital/workspace` + [Dockerfile](./Dockerfile) | the dev container; reads `/creds` via the image's `devcred`/git/gh/aws shims |
 | `credentials` | `credential-shelf` + [creds/](./creds) | one image, N loops — vends the AWS agent role → `/creds/aws/credentials` and per-org GitHub App tokens → `/creds/github/<org>` |
 
 The sidecar holds the SSO session + `kms:Sign` in an `admin-home` volume mounted into **no**
@@ -46,7 +46,7 @@ consumer. The workspace has neither — it can only read what's vended.
   above. One login revives every vend loop (they share the one session).
 - **Health**: `cat /creds/status/*` (`ok expires=…` / `stalled …`; mtime is a heartbeat) or
   `docker logs -f <project>-credentials-1`.
-- `git push/pull` over HTTPS and `aws`/`gh` "just work" via base's shims; nothing in the
+- `git push/pull` over HTTPS and `aws`/`gh` "just work" via the image's shims; nothing in the
   workspace can mint or widen a credential.
 
 | Credential | Lifetime | Renewal |
