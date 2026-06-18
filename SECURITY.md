@@ -4,10 +4,10 @@ The security **patterns** — the trust model, the VS Code host-channel hardenin
 container isolation, credential vending, the general discipline, and the research
 sources — are documented in opus, in:
 
-- **[opus docs/devcontainer/SECURITY.md](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md)** — trust
+- **[opus docs/devcontainer/SECURITY.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/docs/SECURITY.md)** — trust
   model, the workspace↔host channel hardening, container isolation, extension-host
   RCE, discipline, the attacker summary, invariants, and sources.
-- **[opus docs/devcontainer/SECRETS.md](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECRETS.md)** —
+- **[opus docs/devcontainer/SECRETS.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/docs/SECRETS.md)** —
   the credential contract (`devcred`, transports, naming).
 
 This file records only what is **specific to this devcontainer** — its concrete trust
@@ -20,7 +20,7 @@ troubleshooting) are in [README.md](./README.md).
 
 ## Concrete trust tiers
 
-The toolkit's [tier *concept*](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#2-trust-tiers--the-concept),
+The toolkit's [tier *concept*](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/docs/SECURITY.md#2-trust-tiers--the-concept),
 instantiated here:
 
 | Tier | Runs | Holds |
@@ -65,7 +65,7 @@ The consumer side (`devcred` + the git/gh/aws shims that read the shelf) comes f
 ## Discipline specific to this setup
 
 The general discipline is in
-[SECURITY.md §11](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#11-human-discipline-the-patterns-depend-on-these).
+[SECURITY.md §11](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/docs/SECURITY.md#11-human-discipline-the-patterns-depend-on-these).
 Specific to *this* setup:
 
 - **Never approve a hardware-key touch you didn't initiate.** Agents here run as the
@@ -75,14 +75,14 @@ Specific to *this* setup:
   credential sidecars are **vend-only** — they hold the SSO session + KMS sign, nothing
   else, and don't mount `/workspace`. Run privileged applies in a controlled CI/CD
   environment, and review agent-authored diffs before they do ([the design doc's
-  "applying agent output re-crosses the boundary"](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#3-what-this-does-not-protect)).
+  "applying agent output re-crosses the boundary"](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/docs/SECURITY.md#3-what-this-does-not-protect)).
 
 ---
 
 ## Concrete config invariants
 
 The toolkit invariants
-([§13](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#13-invariants-dont-regress-these)), with the
+([§13](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/docs/SECURITY.md#13-invariants-dont-regress-these)), with the
 values this container must hold:
 
 | Item | Required value |
@@ -105,10 +105,10 @@ values this container must hold:
   sidecars; the agent is **not yet** split into its own container, so agents run as the
   workspace uid alongside the dev. The toolkit target is the three-container agent
   isolation in
-  [SECURITY.md §4](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECURITY.md#4-agent-isolation--separate-container-same-uid-mount-topology).
+  [SECURITY.md §4](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/docs/SECURITY.md#4-agent-isolation--separate-container-same-uid-mount-topology).
 - **File shelf, not a broker.** Credentials are vended as read-only files (no per-request
   audit; same secrets for both consumers); the toolkit target is the on-demand broker in
-  [SECRETS.md](https://github.com/twin-digital/opus/blob/main/docs/devcontainer/SECRETS.md).
+  [SECRETS.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/docs/SECRETS.md).
 
 ---
 
