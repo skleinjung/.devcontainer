@@ -3,7 +3,7 @@
 # reaper), the credential consumer shims (devcred + the git/gh helpers +
 # AWS_SHARED_CREDENTIALS_FILE), the keep-alive CMD, and the toolchains (aws-cli, gh, node/nvm,
 # python, terraform, gnupg2, yq). Everything below is project-specific: pandoc, Claude Code,
-# the rootfs helpers (tf, aws-get-account-id), the home seed, and the lifecycle scripts.
+# the tf/aws-get-account-id helpers, ansible, lastpass-cli, the home seed, and the lifecycle scripts.
 FROM ghcr.io/twin-digital/workspace:latest
 
 # Pinned tool versions (kept at the top so they're easy to see and bump).
@@ -32,6 +32,19 @@ RUN install -m0755 -d /etc/apt/keyrings \
   && apt-get clean \
   && rm -rf /var/lib/apt/lists/*
 
+# ansible — installed in an isolated venv
+# (the base image's system Python is PEP 668 externally-managed) at /opt/ansible, with its
+# console scripts symlinked onto PATH. Collections/roles are still resolved at run time from
+# the infra repo (ansible.cfg roles_path + `ansible-galaxy install -r requirements.yml`).
+#
+# The venv also carries the Python libs that Ansible plugins import in-process — these must
+# live in /opt/ansible, not the system Python: requests (community.general.proxmox dynamic
+# inventory), boto3/botocore (amazon.aws.aws_ssm secret lookups), proxmoxer (newer proxmox
+# inventory plugin).
+RUN python3 -m venv /opt/ansible \
+  && /opt/ansible/bin/pip install --no-cache-dir ansible boto3 botocore proxmoxer requests \
+  && ln -s /opt/ansible/bin/ansible* /usr/local/bin/
+
 # The unprivileged dev account. The username is configurable (--build-arg USERNAME=alice);
 # uid/gid are pinned to 1000 and NOT overridable — the credential shelf vends 0600 files
 # owned by uid 1000, so the consumer must run as 1000 to read them, and the workspace
@@ -56,9 +69,6 @@ RUN curl -fsSL https://claude.ai/install.sh | bash
 USER root
 
 # ── Our files (edited more often; kept late so changes don't bust the cache above) ───────
-# rootfs: the project's tf + aws-get-account-id helpers.
-COPY rootfs/ /
-
 COPY home/ /home/${USERNAME}/
 # Lifecycle scripts (post-create/post-attach + their .d drop-ins) and gh-token-seed.
 COPY scripts/container/ /usr/local/bin/
