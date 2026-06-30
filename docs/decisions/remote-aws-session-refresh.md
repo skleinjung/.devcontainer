@@ -1,9 +1,9 @@
 # Remote, low-friction AWS session refresh
 
 **Status:** Accepted. Changes only how the AWS Identity Center session is
-*refreshed*; the credential-MINTING path stays AWS-operated, and GitHub-App
+*refreshed*; the credential-minting path stays AWS-operated, and GitHub-App
 vending and downstream delivery (file shelf today,
-[broker](../../../opus/nodejs/devcontainer/credential-shelf/docs/CREDENTIAL-BROKER.md)
+[broker](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/CREDENTIAL-BROKER.md)
 later) are unchanged.
 
 ## Context
@@ -77,10 +77,17 @@ cost and lower robustness.
 
 ## Alternatives considered
 
-### A. Soft in-sidecar lease
-A timestamp the operator refreshes; the vend loop refuses to mint when stale.
-**Rejected:** the capability secret sits on the sidecar, so exfiltrating it
-bypasses the check. Defends liveness, not exfiltration.
+### A. Soft in-sidecar lease — *deferred (future enhancement), not rejected*
+A timestamp the operator/workspace refreshes; the vend loop refuses to mint when
+stale. As a *capability* gate it's weak — the SSO session still sits on the
+sidecar, so a sidecar/host exfil bypasses it (defends liveness, not
+exfiltration). **But** it has a distinct benefit the presence-gated designs
+lacked: it gates the **consumer** side. With the 7-day session, the workspace
+otherwise holds standing AWS creds 24/7; a soft activity gate would mint to
+`/creds` **only during active work** (purge when idle), shrinking the low-trust
+workspace's exposure window without touching the capability. Reframed this way it
+is worth keeping — deferred as a future enhancement layered on this decision.
+Tracked: skleinjung/.devcontainer#14.
 
 ### B. Presence-gated two-Lambda lease + tailnet binding
 Lambda A (passkey/WebAuthn-gated) writes a lease to DynamoDB; Lambda B, called
@@ -137,20 +144,28 @@ including the hardened invariant set, is preserved in this repo's git history.
 ## Implementation shape
 
 - **Identity Center:** set the session duration to 7 days (console / IaC).
-- **Remote-trigger service:** a small Node.js service (per the repo's Node-first
-  preference), tailnet-fronted (`tailscale serve`), authenticated (token or
-  passkey) + rate-limited. On request it runs the sidecar's existing
-  `refresh-credentials` and returns/pushes the device-code verification URL + code
-  to the operator only. Lives alongside the sidecar (compose service or the opus
-  toolkit); it holds **no** AWS minting capability — it only kicks off the
-  human-completed device-code flow.
+- **Remote-trigger service:** a small Node.js service, tailnet-fronted
+  (`tailscale serve`), authenticated (token or passkey) + rate-limited. On request
+  it runs the sidecar's existing `refresh-credentials` and returns/pushes the
+  device-code verification URL + code to the operator only. It holds **no** AWS
+  minting capability — it only kicks off the human-completed device-code flow.
+  **Decided: the service is built in the opus `credential-shelf` toolkit** (the
+  reusable component — twin-digital/opus#196); the per-deployment tailnet wiring +
+  docs land in this repo (skleinjung/.devcontainer#13).
 - **Docs:** update `README`/`SECURITY` (the daily-use refresh step and the
   trigger's trust boundary).
 
+## Implementation tracking
+
+- twin-digital/opus#196 — the remote-trigger service (opus `credential-shelf`).
+- skleinjung/.devcontainer#12 — set the Identity Center session to 7 days.
+- skleinjung/.devcontainer#13 — wire the trigger into this devcontainer + docs.
+- skleinjung/.devcontainer#14 — *deferred* soft consumer-side minting gate
+  (Alternative A).
+
 ## Open follow-ups
 
-- Decide where the trigger service lives (a `.devcontainer` compose service vs.
-  the opus `credential-shelf` toolkit) and its exact auth (shared token vs.
-  passkey) — an implementation detail, not a design fork.
+- Trigger-service auth: shared token (v1) vs passkey — settled in the opus PR
+  (#196), an implementation detail, not a design fork.
 - If a tighter dead-man's switch is wanted later, shorten the session duration;
   the remote trigger keeps that low-friction.
