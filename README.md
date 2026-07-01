@@ -19,9 +19,11 @@ consumes.
 |---|---|---|
 | `workspace` | `twin-digital/workspace` + [Dockerfile](./Dockerfile) | the dev container; reads `/creds` via the image's `devcred`/git/gh/aws shims |
 | `credentials` | `credential-shelf` + [creds/](./creds) | one image, N loops — vends the AWS agent role → `/creds/aws/credentials` and per-org GitHub App tokens → `/creds/github/<org>` |
+| `refresh-trigger` | `credential-shelf-trigger` | LAN-local, authed endpoint to remotely trigger the SSO device-code refresh; holds **no** AWS identity |
 
 The sidecar holds the SSO session + `kms:Sign` in an `admin-home` volume mounted into **no**
-consumer. The workspace has neither — it can only read what's vended.
+consumer. The workspace has neither — it can only read what's vended. `refresh-trigger` can
+only *ask* the sidecar to start a login prompt (over a private socket), never mint.
 
 ## First run (one-time)
 
@@ -39,11 +41,23 @@ consumer. The workspace has neither — it can only read what's vended.
    ```
    `refresh-credentials` does the device-code login for every configured session (no profile
    name needed) and vends immediately; within ~60s all loops are serving creds.
+5. **(Optional) Enable remote refresh** — to revive the session from a phone on the home
+   network, set two host env vars before bringing the project up: `REFRESH_TRIGGER_TOKEN` (a
+   strong shared secret; the `refresh-trigger` service refuses to start without it) and
+   `REFRESH_TRIGGER_BIND` (the host's **LAN** IP — not `0.0.0.0`, not a tailnet address;
+   defaults to `127.0.0.1`, i.e. host-local only). Then use the remote flow in *Daily use*.
 
 ## Daily use
 
-- **Re-login** when the Identity Center session lapses (~8h): re-run `refresh-credentials`
-  above. One login revives every vend loop (they share the one session).
+- **Re-login** when the Identity Center session lapses (~8h). One login revives every vend
+  loop (they share the one session). Two ways, same AWS-operated device-code flow:
+  - **Remote one-tap (on the home LAN):** `POST /refresh` to the `refresh-trigger` endpoint
+    with the shared token; it returns a `user_code` + `verification_uri`. Open the URL, confirm
+    the code **matches the one you were just handed**, and approve (IdP + MFA). Vending revives
+    on approval. `GET /status` reports when the session is due. Requires `REFRESH_TRIGGER_TOKEN`
+    set on the host and `REFRESH_TRIGGER_BIND` set to the host's LAN IP (see *First run*).
+  - **Break-glass (host shell):** `docker exec -it <project>-credentials-1 refresh-credentials`
+    — always available even if the trigger is down.
 - **Health**: `cat /creds/status/*` (`ok expires=…` / `stalled …`; mtime is a heartbeat) or
   `docker logs -f <project>-credentials-1`.
 - `git push/pull` over HTTPS and `aws`/`gh` "just work" via the image's shims; nothing in the
@@ -53,7 +67,7 @@ consumer. The workspace has neither — it can only read what's vended.
 |---|---|---|
 | GitHub token (`/creds/github/<org>`) | 1h (GitHub-fixed) | auto, <10 min left |
 | AWS role creds (`/creds/aws/credentials`) | 1h (permission-set) | auto, <15 min left |
-| **Identity Center session** | ~8h (org setting) | **device-code login (the one recurring step)** |
+| **Identity Center session** | ~8h (org setting) | **device-code login — remote one-tap on the LAN, or host shell (the one recurring step)** |
 | KMS App key | permanent, non-extractable | — |
 
 ## Troubleshooting

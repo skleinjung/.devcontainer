@@ -28,6 +28,7 @@ instantiated here:
 | 1. **Windows desktop** | VS Code desktop client + SSH agent (one FIDO hardware key) | the hardware key + client — no source, creds, or secrets |
 | 2. **External Linux host** | VS Code remote server, Docker daemon | the daemon is the root-equivalent boundary |
 | 3. **credential sidecar** (`credentials`) | trusted, **vend-only** | the SSO session + GitHub App signing (KMS) — and nothing else (no shells, no `lpass`/`ansible`/`terraform`) |
+| 3b. **refresh trigger** (`refresh-trigger`) | trusted but **powerless** — LAN-facing | **nothing** — no AWS identity, no `admin-home`, no Docker socket; can only initiate a device-code login via the sidecar's socket. Worst case: a login-prompt DoS |
 | 4. **`workspace` container** | agents + untrusted code | only short-lived, scoped, vended creds |
 
 ---
@@ -48,6 +49,37 @@ The `credentials` sidecar (image `credential-shelf`, one image / N loops) vends 
   consumer. (Per-consumer policy / on-demand broker is a toolkit target — see *Deviations*.)
 
 The consumer side (`devcred` + the git/gh/aws shims that read the shelf) comes from the `workspace` image.
+
+---
+
+## Remote refresh trigger (`refresh-trigger`)
+
+The SSO session lapses ~daily. Reviving it used to require a **host shell**
+(`docker exec … refresh-credentials`), which you can't do while away. The `refresh-trigger`
+sidecar (toolkit image `credential-shelf-trigger`) makes that refresh **remotely triggerable**
+on the home LAN — without loosening anything, because it can only *initiate* a login, never
+complete or mint one:
+
+- **It holds no minting capability.** No AWS identity, no `admin-home`, no Docker socket, no
+  `creds-shelf`. It reaches the `credentials` sidecar over a **single-purpose Unix socket**
+  (the `trigger-sock` volume, shared with `credentials` only — never the workspace). That
+  socket exposes exactly one operation: *start a device authorization, return the `user_code` +
+  `verification_uri`, then background-poll and vend on approval.* It takes no request arguments
+  (the SSO session comes from the sidecar's baked config), so it can't be steered or coerced
+  into minting. This is the `credentials` sidecar's **first and only inbound surface**,
+  preserving the tier-3 "vend-only, no shells" invariant.
+- **AWS Identity Center (+MFA) stays the minter.** The trigger never completes a login. So a
+  compromised/abused endpoint is at most a **login-prompt DoS, not a credential mint** — by
+  construction. It is **authenticated** (shared bearer token) and **rate-limited** (repeated
+  triggers can hit AWS device-authorization limits and *block* the real refresh), and every
+  attempt is **audit-logged** (who/when/outcome, never the code or URL).
+- **Reachability is local-network only.** Its port publishes to the host's **LAN** IP
+  (`REFRESH_TRIGGER_BIND`; default `127.0.0.1`, i.e. host-local) — **not** public, **not** a
+  tailnet address; no Tailscale in the compose project. The `user_code`/URL travel to the
+  authenticated operator in the response only.
+- **Approval stays operator-initiated.** The device grant doesn't bind approver to initiator;
+  the trigger surfaces the `user_code` so the operator approves **only a code they just
+  initiated** and refuses unsolicited prompts.
 
 ---
 
@@ -96,16 +128,23 @@ values this container must hold:
 | `github.com` `credential.helper` | `devcred` (set by the `workspace` image) |
 | compose `entrypoint` | `reap-vscode-sockets` (the workspace image's reaper) + `overrideCommand: false` |
 | `creds/vend.yaml` | **baked into the `credentials` image**, not bind-mounted from `/workspace` |
+| `trigger-sock` volume | shared by `credentials` + `refresh-trigger` **only** — **never** mounted into the workspace |
+| `REFRESH_LISTENER_SOCKET` (on `credentials`) | the `trigger-sock` path — the sidecar's only inbound surface |
+| `refresh-trigger` mounts | **only** `trigger-sock` — **no** `admin-home`, `creds-shelf`, or Docker socket |
+| `refresh-trigger` reachability | LAN-local — `REFRESH_TRIGGER_BIND` is the host's LAN IP, **never** `0.0.0.0` or a tailnet address |
+| `TRIGGER_TOKEN` | **required** (the service fails closed without it) |
 
 ---
 
 ## Deviations from the toolkit target
 
-- **Two containers, not three.** This setup runs `workspace` + the two credential
-  sidecars; the agent is **not yet** split into its own container, so agents run as the
-  workspace uid alongside the dev. The toolkit target is the three-container agent
-  isolation in
+- **Agent not isolated (co-located with the dev).** The compose project runs three
+  containers — `workspace`, `credentials`, and `refresh-trigger` — but the **agent is not
+  yet split into its own container**: it runs at the workspace uid alongside the dev. The
+  toolkit target is the separate-agent-container isolation in
   [SECURITY.md §4](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECURITY.md#4-agent-isolation--separate-container-same-uid-mount-topology).
+  (`credentials` holds the SSO session + `kms:Sign`; `refresh-trigger` holds nothing — see
+  *Remote refresh trigger* above.)
 - **File shelf, not a broker.** Credentials are vended as read-only files (no per-request
   audit; same secrets for both consumers); the toolkit target is the on-demand broker in
   [SECRETS.md](https://github.com/twin-digital/opus/blob/main/nodejs/devcontainer/credential-shelf/docs/SECRETS.md).
