@@ -55,12 +55,44 @@ services:
     environment:
       # No reachable localhost callback in here (bridge net) — use the SSO device-code flow.
       AWS_SSO_USE_DEVICE_CODE: '1'
+      # Bind the remote-refresh primitive on this socket (its ONLY inbound surface), reachable
+      # only by the refresh-trigger sidecar over the shared trigger-sock volume.
+      REFRESH_LISTENER_SOCKET: /run/credential-shelf/refresh.sock
     volumes:
       - admin-home:/home/credential-vendor
       - creds-shelf:/creds
+      # The refresh primitive's socket — shared with refresh-trigger ONLY, never the workspace.
+      - trigger-sock:/run/credential-shelf
+
+  # ── remote-refresh trigger (toolkit image) — LAN-local, authed, holds NO AWS identity ──────
+  # Fronts the credentials sidecar's one refresh primitive so an SSO session can be revived from
+  # a phone on the home network. It can only ASK the sidecar to start a device-code login — never
+  # mint (no admin-home, no AWS creds, no Docker socket). Worst case is a login-prompt DoS.
+  refresh-trigger:
+    image: ghcr.io/twin-digital/credential-shelf-trigger:latest
+    init: true
+    restart: unless-stopped
+    environment:
+      # Required: the shared bearer secret, from the HOST env (never baked, never in the workspace).
+      TRIGGER_TOKEN: ${REFRESH_TRIGGER_TOKEN:?set REFRESH_TRIGGER_TOKEN to a strong shared secret}
+      TRIGGER_UPSTREAM_SOCKET: /run/credential-shelf/refresh.sock
+    # Publish to the HOME LAN only. Default 127.0.0.1 (host-local, fails safe); set
+    # REFRESH_TRIGGER_BIND to the host's LAN IP to reach it from other devices on the network.
+    # Do NOT bind 0.0.0.0 or a tailnet address — reachability is local-network-only by design.
+    ports:
+      - '${REFRESH_TRIGGER_BIND:-127.0.0.1}:${REFRESH_TRIGGER_PORT:-8770}:8770'
+    cap_drop:
+      - ALL
+    security_opt:
+      - 'no-new-privileges:true'
+    volumes:
+      # ONLY the refresh socket — no admin-home, no creds-shelf, no Docker socket.
+      - trigger-sock:/run/credential-shelf
 
 volumes:
   # Written only by the credential sidecar; read-only in the workspace.
   creds-shelf:
   # The sidecar's $HOME (SSO cache + ~/.aws). Never mounted into the workspace.
   admin-home:
+  # The refresh primitive's Unix socket — shared by credentials + refresh-trigger only.
+  trigger-sock:
