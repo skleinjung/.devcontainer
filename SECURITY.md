@@ -80,8 +80,9 @@ complete or mint one:
   network** the workspace is not attached to, so untrusted workspace code can't reach it
   internally at `http://refresh-trigger:8770` either — only LAN operator devices, via the
   published port. The `user_code`/URL travel to the authenticated operator in the response only.
-- **Off by default.** The service only starts under the `refresh` compose profile
-  (`COMPOSE_PROFILES=refresh`); the base setup is unchanged without it.
+- **Inert by default.** The service is always defined but **idles and serves nothing** until
+  `REFRESH_TRIGGER_TOKEN` is set — so the base setup is unaffected, and remote refresh is a
+  token away without any profile juggling.
 - **Approval stays operator-initiated.** The device grant doesn't bind approver to initiator;
   the trigger surfaces the `user_code` so the operator approves **only a code they just
   initiated** and refuses unsolicited prompts.
