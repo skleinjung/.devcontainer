@@ -19,7 +19,7 @@ consumes.
 |---|---|---|
 | `workspace` | `twin-digital/workspace` + [Dockerfile](./Dockerfile) | the dev container; reads `/creds` via the image's `devcred`/git/gh/aws shims |
 | `credentials` | `credential-shelf` + [creds/](./creds) | one image, N loops — vends the AWS agent role → `/creds/aws/credentials` and per-org GitHub App tokens → `/creds/github/<org>` |
-| `refresh-trigger` | `credential-shelf-trigger` | LAN-local, authed endpoint to remotely trigger the SSO device-code refresh; holds **no** AWS identity |
+| `refresh-trigger` | `credential-shelf-trigger` | **opt-in** (`refresh` profile) LAN-local, authed endpoint to remotely trigger the SSO device-code refresh; holds **no** AWS identity, on its own isolated network |
 
 The sidecar holds the SSO session + `kms:Sign` in an `admin-home` volume mounted into **no**
 consumer. The workspace has neither — it can only read what's vended. `refresh-trigger` can
@@ -41,11 +41,38 @@ only *ask* the sidecar to start a login prompt (over a private socket), never mi
    ```
    `refresh-credentials` does the device-code login for every configured session (no profile
    name needed) and vends immediately; within ~60s all loops are serving creds.
-5. **(Optional) Enable remote refresh** — to revive the session from a phone on the home
-   network, set two host env vars before bringing the project up: `REFRESH_TRIGGER_TOKEN` (a
-   strong shared secret; the `refresh-trigger` service refuses to start without it) and
-   `REFRESH_TRIGGER_BIND` (the host's **LAN** IP — not `0.0.0.0`, not a tailnet address;
-   defaults to `127.0.0.1`, i.e. host-local only). Then use the remote flow in *Daily use*.
+5. **(Optional) Enable remote refresh** — the `refresh-trigger` service is **off by default**
+   (behind the `refresh` compose profile), so the base setup stays the two-container `workspace`
+   + `credentials` with no extra config. To revive the session from a phone on the home network,
+   set three host env vars before bringing the project up (see *Host-side env* below):
+   - `COMPOSE_PROFILES=refresh` — start the `refresh-trigger` service.
+   - `REFRESH_TRIGGER_TOKEN` — a strong shared secret. Required when enabled; the container
+     fails closed without it (bring-up itself doesn't need it, so the default two-container
+     setup is unaffected).
+   - `REFRESH_TRIGGER_BIND` — the host's **LAN** IP (not `0.0.0.0`, not a tailnet address;
+     defaults to `127.0.0.1`, i.e. host-local only).
+
+   Then use the remote flow in *Daily use*.
+
+### Host-side env (where the `REFRESH_TRIGGER_*` vars go)
+
+Compose reads these from the environment of whatever runs `docker compose` (VS Code, when it
+brings the dev container up) or from a **`.env` file next to `docker-compose.yml`** — i.e.
+`.devcontainer/.env`, which Compose auto-loads:
+
+```dotenv
+COMPOSE_PROFILES=refresh
+REFRESH_TRIGGER_BIND=192.168.1.50   # the Docker host's LAN IP
+REFRESH_TRIGGER_TOKEN=<strong-random-secret>
+```
+
+Caveat: `.devcontainer/` is on the `/workspace` mount, so a token in `.devcontainer/.env` is
+readable by the workspace (untrusted code). It's a **DoS-bound** secret — worst case is
+triggering login prompts, never a mint (and the trigger is on an isolated network the workspace
+can't reach) — but if you'd rather keep it out of the workspace entirely, set `REFRESH_TRIGGER_TOKEN`
+as a host environment variable in the session that brings the containers up, and keep only the
+non-secret `COMPOSE_PROFILES` / `REFRESH_TRIGGER_BIND` in `.env`. (`.env` is gitignored, so it
+won't be committed either way.)
 
 ## Daily use
 

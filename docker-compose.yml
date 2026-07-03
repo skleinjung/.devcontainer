@@ -68,13 +68,20 @@ services:
   # Fronts the credentials sidecar's one refresh primitive so an SSO session can be revived from
   # a phone on the home network. It can only ASK the sidecar to start a device-code login — never
   # mint (no admin-home, no AWS creds, no Docker socket). Worst case is a login-prompt DoS.
+  #
+  # Opt-in: this service only starts when the `refresh` compose profile is active
+  # (`COMPOSE_PROFILES=refresh`), so the default bring-up is unchanged (workspace + credentials,
+  # no token needed). When enabled it needs REFRESH_TRIGGER_TOKEN — the container fails closed
+  # without it (no in-compose `:?`, which would block the token-less default bring-up).
   refresh-trigger:
     image: ghcr.io/twin-digital/credential-shelf-trigger:latest
+    profiles: ['refresh']
     init: true
     restart: unless-stopped
     environment:
-      # Required: the shared bearer secret, from the HOST env (never baked, never in the workspace).
-      TRIGGER_TOKEN: ${REFRESH_TRIGGER_TOKEN:?set REFRESH_TRIGGER_TOKEN to a strong shared secret}
+      # The shared bearer secret, from the HOST env (never baked, never in the workspace). The
+      # container refuses to start if it's empty.
+      TRIGGER_TOKEN: ${REFRESH_TRIGGER_TOKEN:-}
       TRIGGER_UPSTREAM_SOCKET: /run/credential-shelf/refresh.sock
     # Publish to the HOME LAN only. Default 127.0.0.1 (host-local, fails safe); set
     # REFRESH_TRIGGER_BIND to the host's LAN IP to reach it from other devices on the network.
@@ -85,9 +92,18 @@ services:
       - ALL
     security_opt:
       - 'no-new-privileges:true'
+    # Its OWN network — NOT the default one the workspace is on. The workspace (untrusted) must
+    # not be able to reach the trigger at `http://refresh-trigger:8770`; only LAN operator
+    # devices, via the published port. It talks to `credentials` over the socket, not the network.
+    networks:
+      - trigger-net
     volumes:
       # ONLY the refresh socket — no admin-home, no creds-shelf, no Docker socket.
       - trigger-sock:/run/credential-shelf
+
+networks:
+  # Isolates refresh-trigger from the default network (workspace + credentials).
+  trigger-net:
 
 volumes:
   # Written only by the credential sidecar; read-only in the workspace.

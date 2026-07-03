@@ -54,8 +54,9 @@ The consumer side (`devcred` + the git/gh/aws shims that read the shelf) comes f
 
 ## Remote refresh trigger (`refresh-trigger`)
 
-The SSO session lapses ~daily. Reviving it used to require a **host shell**
-(`docker exec … refresh-credentials`), which you can't do while away. The `refresh-trigger`
+The Identity Center session lasts ~8h (roughly a re-login per day in practice). Reviving it
+used to require a **host shell** (`docker exec … refresh-credentials`), which you can't do
+while away. The `refresh-trigger`
 sidecar (toolkit image `credential-shelf-trigger`) makes that refresh **remotely triggerable**
 on the home LAN — without loosening anything, because it can only *initiate* a login, never
 complete or mint one:
@@ -75,8 +76,12 @@ complete or mint one:
   attempt is **audit-logged** (who/when/outcome, never the code or URL).
 - **Reachability is local-network only.** Its port publishes to the host's **LAN** IP
   (`REFRESH_TRIGGER_BIND`; default `127.0.0.1`, i.e. host-local) — **not** public, **not** a
-  tailnet address; no Tailscale in the compose project. The `user_code`/URL travel to the
-  authenticated operator in the response only.
+  tailnet address; no Tailscale in the compose project. It also sits on **its own compose
+  network** the workspace is not attached to, so untrusted workspace code can't reach it
+  internally at `http://refresh-trigger:8770` either — only LAN operator devices, via the
+  published port. The `user_code`/URL travel to the authenticated operator in the response only.
+- **Off by default.** The service only starts under the `refresh` compose profile
+  (`COMPOSE_PROFILES=refresh`); the base setup is unchanged without it.
 - **Approval stays operator-initiated.** The device grant doesn't bind approver to initiator;
   the trigger surfaces the `user_code` so the operator approves **only a code they just
   initiated** and refuses unsolicited prompts.
@@ -131,6 +136,7 @@ values this container must hold:
 | `trigger-sock` volume | shared by `credentials` + `refresh-trigger` **only** — **never** mounted into the workspace |
 | `REFRESH_LISTENER_SOCKET` (on `credentials`) | the `trigger-sock` path — the sidecar's only inbound surface |
 | `refresh-trigger` mounts | **only** `trigger-sock` — **no** `admin-home`, `creds-shelf`, or Docker socket |
+| `refresh-trigger` network | its **own** network (`trigger-net`); the workspace is **not** attached — can't reach `http://refresh-trigger:8770` |
 | `refresh-trigger` reachability | LAN-local — `REFRESH_TRIGGER_BIND` is the host's LAN IP, **never** `0.0.0.0` or a tailnet address |
 | `TRIGGER_TOKEN` | **required** (the service fails closed without it) |
 
