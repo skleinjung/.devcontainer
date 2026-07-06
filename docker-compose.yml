@@ -69,18 +69,17 @@ services:
   # a phone on the home network. It can only ASK the sidecar to start a device-code login — never
   # mint (no admin-home, no AWS creds, no Docker socket). Worst case is a login-prompt DoS.
   #
-  # Opt-in: this service only starts when the `refresh` compose profile is active
-  # (`COMPOSE_PROFILES=refresh`), so the default bring-up is unchanged (workspace + credentials,
-  # no token needed). When enabled it needs REFRESH_TRIGGER_TOKEN — the container fails closed
-  # without it (no in-compose `:?`, which would block the token-less default bring-up).
+  # Always defined (not a compose profile — a profile would land this in a different Compose
+  # project than VS Code's, breaking the shared trigger-sock volume). It's inert until enabled:
+  # with no REFRESH_TRIGGER_TOKEN the container idles and never serves. Set the token (+ LAN
+  # bind) to turn on remote refresh; leave it unset to keep this container dormant.
   refresh-trigger:
     image: ghcr.io/twin-digital/credential-shelf-trigger:latest
-    profiles: ['refresh']
     init: true
     restart: unless-stopped
     environment:
-      # The shared bearer secret, from the HOST env (never baked, never in the workspace). The
-      # container refuses to start if it's empty.
+      # The shared bearer secret, from the HOST env (never baked, never in the workspace). Empty
+      # ⇒ the container idles and serves nothing (fail-closed); set it to enable remote refresh.
       TRIGGER_TOKEN: ${REFRESH_TRIGGER_TOKEN:-}
       TRIGGER_UPSTREAM_SOCKET: /run/credential-shelf/refresh.sock
     # Publish to the HOME LAN only. Default 127.0.0.1 (host-local, fails safe); set
