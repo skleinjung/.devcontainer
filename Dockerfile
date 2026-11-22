@@ -9,6 +9,7 @@ FROM ghcr.io/twin-digital/workspace:latest
 # Pinned tool versions (kept at the top so they're easy to see and bump).
 ARG PANDOC_VERSION=3.8.3
 ARG PANDOC_SHA256=c224fab89f827d3623380ecb7c1078c163c769c849a14ac27e8d3bfbb914c9b4
+ARG OPENSPEC_VERSION=2.1.1
 
 USER root
 
@@ -66,6 +67,9 @@ RUN getent passwd \
 # edited COPY layers below, so a script change doesn't re-run this network install.
 USER ${USERNAME}
 RUN curl -fsSL https://claude.ai/install.sh | bash
+# openspec CLI — spec-driven change workflow for Claude Code. Global npm install into the
+# user-owned nvm prefix (/usr/local/share/nvm/current, on PATH), pinned; not a project dependency.
+RUN npm install -g "@fission-ai/openspec@${OPENSPEC_VERSION}"
 USER root
 
 # ── Our files (edited more often; kept late so changes don't bust the cache above) ───────

@@ -22,7 +22,9 @@
     // — no local daemon, no host socket. build/pull/run happen on the remote host; the SSH
     // transport reuses the forwarded agent and connects as the container user. Short hostname
     // (not IP) so it tracks DHCP.
-    "DOCKER_HOST": "ssh://prod-development-docker"
+    "DOCKER_HOST": "ssh://prod-development-docker",
+    // OpenSpec sends anonymous usage data unless told not to.
+    "OPENSPEC_TELEMETRY": "0"
   },
   "customizations": {
     "vscode": {
